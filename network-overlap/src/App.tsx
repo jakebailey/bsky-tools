@@ -7,7 +7,6 @@ import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createSignal, For, Match, Show, Switch } from "solid-js";
 import { cleanHandle, profilePrefix } from "../../shared/bsky";
 import { ProfileCard } from "../../shared/ProfileCard";
-import { RichText } from "../../shared/RichText";
 import {
     type ActorIdentifier,
     computeOverlap,
