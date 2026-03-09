@@ -3,68 +3,65 @@ import "../../shared.css";
 import "./App.css";
 
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
-import { Effect, References } from "effect";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
-import { RateLimiter } from "effect/unstable/persistence";
 import { type Component, createResource, For, Match, Show, Switch } from "solid-js";
-import { getBlueskyList, getBlueskyProfile, getBlueskyProfiles, getClearskyLists } from "./apis";
+import {
+    getBlueskyListPurpose,
+    getBlueskyProfile,
+    getBlueskyProfiles,
+    getClearskyLists,
+    type ProfileViewDetailed,
+} from "./apis";
 
-// handle should already be URL safe
-const doWork = (queryHandle: string) =>
-    Effect.gen(function*() {
-        yield* Effect.log(`Fetching profile for ${queryHandle}`);
-        const profile = yield* getBlueskyProfile(queryHandle);
-        yield* Effect.log(`Fetching lists for ${queryHandle}`);
-        const clearskyLists = yield* getClearskyLists(queryHandle);
+async function doWork(queryHandle: string) {
+    const profile = await getBlueskyProfile(queryHandle);
+    const clearskyLists = await getClearskyLists(queryHandle);
 
-        const [, clearskyListsWithPurpose] = yield* Effect.partition(
-            clearskyLists,
-            (list) => getBlueskyList(list.did, list.url).pipe(Effect.map(({ purpose }) => ({ list, purpose }))),
-            { concurrency: 20 },
-        );
-
-        const modClearskyLists = clearskyListsWithPurpose.filter(
-            (list) => list.purpose === "app.bsky.graph.defs#modlist",
-        ).map(({ list }) => list);
-
-        const profiles = yield* Effect.orElseSucceed(
-            getBlueskyProfiles(modClearskyLists.map((list) => list.did)),
-            () => undefined,
-        );
-
-        if (!profiles?.size) {
-            return { profile, lists: [] };
-        }
-
-        const lists = [];
-        for (const list of modClearskyLists) {
-            const profile = profiles.get(list.did);
-            if (!profile || profile.handle === "handle.invalid") {
-                continue;
-            }
-            lists.push({ profile, list });
-        }
-
-        // sort descending by followers count
-        lists.sort((a, b) => b.profile.followersCount - a.profile.followersCount);
-
-        return { profile, lists };
-    }).pipe(
-        Effect.scoped,
-        Effect.provide(FetchHttpClient.layer),
-        Effect.provide(RateLimiter.layer),
-        Effect.provide(RateLimiter.layerStoreMemory),
-        Effect.provideService(References.MinimumLogLevel, "Debug"),
+    // Fetch list purposes concurrently, ignoring failures
+    const results = await Promise.allSettled(
+        clearskyLists.map(async (list) => {
+            const purpose = await getBlueskyListPurpose(list.did, list.url);
+            return { list, purpose };
+        }),
     );
 
-const fetchInfo = (handle: string) => Effect.runPromise(doWork(handle));
+    const modClearskyLists = results
+        .filter((r): r is PromiseFulfilledResult<{ list: typeof clearskyLists[number]; purpose: string; }> =>
+            r.status === "fulfilled" && r.value.purpose === "app.bsky.graph.defs#modlist"
+        )
+        .map((r) => r.value.list);
+
+    let profiles: Map<string, ProfileViewDetailed> | undefined;
+    try {
+        profiles = await getBlueskyProfiles(modClearskyLists.map((list) => list.did));
+    } catch {
+        // ignore
+    }
+
+    if (!profiles?.size) {
+        return { profile, lists: [] };
+    }
+
+    const lists = [];
+    for (const list of modClearskyLists) {
+        const listProfile = profiles.get(list.did);
+        if (!listProfile || listProfile.handle === "handle.invalid") {
+            continue;
+        }
+        lists.push({ profile: listProfile, list });
+    }
+
+    // sort descending by followers count
+    lists.sort((a, b) => (b.profile.followersCount ?? 0) - (a.profile.followersCount ?? 0));
+
+    return { profile, lists };
+}
 
 const profilePrefix = "https://bsky.app/profile/";
 
 const Page: Component = () => {
     const navigate = useNavigate();
     const params = useParams<{ handle?: string | undefined; }>();
-    const [info] = createResource(() => params.handle || undefined, fetchInfo);
+    const [info] = createResource(() => params.handle || undefined, doWork);
     return (
         <div>
             <h1>Bluesky Moderation List Finder</h1>
