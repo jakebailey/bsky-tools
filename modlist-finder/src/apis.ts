@@ -49,11 +49,20 @@ async function getClearskyListsPage(handle: string, page: number): Promise<Clear
     return parsed.data.lists;
 }
 
-export async function getClearskyLists(handle: string): Promise<ClearskyList[]> {
+export type { ClearskyList };
+
+export interface ClearskyListsResult {
+    lists: ClearskyList[];
+    hasMore: boolean;
+    nextPage: number;
+}
+
+export async function getClearskyLists(handle: string, startPage = 0, maxPages = 3): Promise<ClearskyListsResult> {
     const seen = new Set<string>();
     const allLists: ClearskyList[] = [];
+    let hasMore = false;
 
-    for (let page = 0; page < 3; page++) {
+    for (let page = startPage; page < startPage + maxPages; page++) {
         const lists = await getClearskyListsPage(handle, page);
         for (const list of lists) {
             if (!seen.has(list.url)) {
@@ -62,9 +71,12 @@ export async function getClearskyLists(handle: string): Promise<ClearskyList[]> 
             }
         }
         if (lists.length < 100) break;
+        if (page === startPage + maxPages - 1) {
+            hasMore = true;
+        }
     }
 
-    return allLists;
+    return { lists: allLists, hasMore, nextPage: startPage + maxPages };
 }
 
 export async function getBlueskyListPurpose(did: Did, url: string): Promise<string> {

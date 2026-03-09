@@ -4,17 +4,25 @@ import "./App.css";
 
 import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
-import { type Component, createResource, createSignal, For, Match, Show, Switch } from "solid-js";
+import { type Component, createEffect, createResource, createSignal, For, Match, Show, Switch } from "solid-js";
 import { isEngagementHacker, profilePrefix } from "../../shared/bsky";
 import { ProfileCard } from "../../shared/ProfileCard";
 import { RichText } from "../../shared/RichText";
-import { getBlueskyListPurpose, getClearskyLists, getProfile, getProfiles, type ProfileViewDetailed } from "./apis";
+import {
+    type ClearskyList,
+    getBlueskyListPurpose,
+    getClearskyLists,
+    getProfile,
+    getProfiles,
+    type ProfileViewDetailed,
+} from "./apis";
 
-async function doWork(queryHandle: string) {
-    const profile = await getProfile(queryHandle);
-    const clearskyLists = await getClearskyLists(queryHandle);
+interface ListEntry {
+    profile: ProfileViewDetailed;
+    list: ClearskyList;
+}
 
-    // Fetch list purposes concurrently, ignoring failures
+async function processLists(clearskyLists: ClearskyList[]): Promise<ListEntry[]> {
     const results = await Promise.allSettled(
         clearskyLists.map(async (list) => {
             const purpose = await getBlueskyListPurpose(list.did, list.url);
@@ -23,7 +31,7 @@ async function doWork(queryHandle: string) {
     );
 
     const modClearskyLists = results
-        .filter((r): r is PromiseFulfilledResult<{ list: typeof clearskyLists[number]; purpose: string; }> =>
+        .filter((r): r is PromiseFulfilledResult<{ list: ClearskyList; purpose: string; }> =>
             r.status === "fulfilled" && r.value.purpose === "app.bsky.graph.defs#modlist"
         )
         .map((r) => r.value.list);
@@ -36,10 +44,10 @@ async function doWork(queryHandle: string) {
     }
 
     if (!profiles?.size) {
-        return { profile, lists: [] };
+        return [];
     }
 
-    const lists = [];
+    const lists: ListEntry[] = [];
     for (const list of modClearskyLists) {
         const listProfile = profiles.get(list.did);
         if (!listProfile || listProfile.handle === "handle.invalid") {
@@ -48,10 +56,17 @@ async function doWork(queryHandle: string) {
         lists.push({ profile: listProfile, list });
     }
 
-    // sort descending by followers count
+    return lists;
+}
+
+async function doWork(queryHandle: string) {
+    const profile = await getProfile(queryHandle);
+    const clearskyResult = await getClearskyLists(queryHandle);
+    const lists = await processLists(clearskyResult.lists);
+
     lists.sort((a, b) => (b.profile.followersCount ?? 0) - (a.profile.followersCount ?? 0));
 
-    return { profile, lists };
+    return { profile, lists, hasMore: clearskyResult.hasMore, nextPage: clearskyResult.nextPage };
 }
 
 const Page: Component = () => {
@@ -59,6 +74,41 @@ const Page: Component = () => {
     const params = useParams<{ handle?: string | undefined; }>();
     const [info] = createResource(() => params.handle || undefined, doWork);
     const [dimHackers, setDimHackers] = makePersisted(createSignal(true), { name: "dimHackers" });
+    const [extraLists, setExtraLists] = createSignal<ListEntry[]>([]);
+    const [hasMore, setHasMore] = createSignal(false);
+    const [nextPage, setNextPage] = createSignal(0);
+    const [loadingMore, setLoadingMore] = createSignal(false);
+
+    const allLists = () => {
+        const base = info()?.lists ?? [];
+        return [...base, ...extraLists()];
+    };
+
+    // Reset extra lists and sync hasMore when resource resolves
+    createEffect(() => {
+        const data = info();
+        if (data) {
+            setExtraLists([]);
+            setHasMore(data.hasMore);
+            setNextPage(data.nextPage);
+        }
+    });
+
+    const loadMore = async () => {
+        const handle = params.handle;
+        if (!handle || loadingMore()) return;
+        setLoadingMore(true);
+        try {
+            const result = await getClearskyLists(decodeURIComponent(handle), nextPage());
+            const newLists = await processLists(result.lists);
+            newLists.sort((a, b) => (b.profile.followersCount ?? 0) - (a.profile.followersCount ?? 0));
+            setExtraLists((prev) => [...prev, ...newLists]);
+            setHasMore(result.hasMore);
+            setNextPage(result.nextPage);
+        } finally {
+            setLoadingMore(false);
+        }
+    };
     return (
         <div>
             <a href=".." class="back-link" rel="external">← Bluesky Tools</a>
@@ -74,6 +124,7 @@ const Page: Component = () => {
             >
                 <input
                     id="handle"
+                    name="handle"
                     type="text"
                     placeholder="Enter handle, DID, or profile link"
                     value={decodeURIComponent(params.handle || "")}
@@ -102,9 +153,9 @@ const Page: Component = () => {
                         />{" "}
                         Dim suspected engagement hackers
                     </label>
-                    <p>{info()!.lists.length} moderation lists</p>
+                    <p>{allLists().length} moderation lists</p>
                     <ul class="profile-list">
-                        <For each={info()!.lists}>
+                        <For each={allLists()}>
                             {(list) => (
                                 <li
                                     class="profile-item"
@@ -146,6 +197,11 @@ const Page: Component = () => {
                             )}
                         </For>
                     </ul>
+                    <Show when={hasMore()}>
+                        <button onClick={loadMore} disabled={loadingMore()}>
+                            {loadingMore() ? "Loading..." : "Show more lists"}
+                        </button>
+                    </Show>
                 </Match>
             </Switch>
 
