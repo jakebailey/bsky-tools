@@ -13,9 +13,20 @@ import {
     fetchNetworkData,
     getProfiles,
     type OverlapResult,
+    type ProfileView,
     type ProfileViewDetailed,
     type ProgressInfo,
 } from "./apis";
+
+type EnrichedOverlapResult =
+    & Omit<OverlapResult, "sharedFollowers" | "sharedFollows" | "sharedMutuals" | "onlyAFollows" | "onlyBFollows">
+    & {
+        sharedFollowers: ProfileViewDetailed[];
+        sharedFollows: ProfileViewDetailed[];
+        sharedMutuals: ProfileViewDetailed[];
+        onlyAFollows: ProfileViewDetailed[];
+        onlyBFollows: ProfileViewDetailed[];
+    };
 
 const ProfileListItem: Component<{ profile: ProfileViewDetailed; dimHackers: boolean; }> = (props) => (
     <li class="profile-item" classList={{ "engagement-hacker": props.dimHackers && isEngagementHacker(props.profile) }}>
@@ -102,7 +113,7 @@ type CompareState =
         profileB: ProfileViewDetailed | null;
     }
     | { status: "enriching"; profileA: ProfileViewDetailed; profileB: ProfileViewDetailed; }
-    | { status: "done"; result: OverlapResult; }
+    | { status: "done"; result: EnrichedOverlapResult; }
     | { status: "error"; error: string; };
 
 const Page: Component = () => {
@@ -146,26 +157,31 @@ const Page: Component = () => {
                 ...result.onlyAFollows.map((p) => p.did),
                 ...result.onlyBFollows.map((p) => p.did),
             ]);
-            if (allDids.size > 0) {
-                const fullProfiles = await getProfiles([...allDids]);
-                const enrich = (profiles: ProfileViewDetailed[]) => profiles.map((p) => fullProfiles.get(p.did) ?? p);
-                result.sharedFollowers = enrich(result.sharedFollowers);
-                result.sharedFollows = enrich(result.sharedFollows);
-                result.sharedMutuals = enrich(result.sharedMutuals);
-                result.onlyAFollows = enrich(result.onlyAFollows);
-                result.onlyBFollows = enrich(result.onlyBFollows);
-            }
+            const fullProfiles = allDids.size > 0
+                ? await getProfiles([...allDids])
+                : new Map<string, ProfileViewDetailed>();
+            const enrich = (profiles: ProfileView[]): ProfileViewDetailed[] =>
+                profiles.map((p) => fullProfiles.get(p.did) ?? (p as ProfileViewDetailed));
+
+            const enrichedResult: EnrichedOverlapResult = {
+                ...result,
+                sharedFollowers: enrich(result.sharedFollowers),
+                sharedFollows: enrich(result.sharedFollows),
+                sharedMutuals: enrich(result.sharedMutuals),
+                onlyAFollows: enrich(result.onlyAFollows),
+                onlyBFollows: enrich(result.onlyBFollows),
+            };
 
             // Sort by follower count descending
             const byFollowers = (a: ProfileViewDetailed, b: ProfileViewDetailed) =>
                 (b.followersCount ?? 0) - (a.followersCount ?? 0);
-            result.sharedFollowers.sort(byFollowers);
-            result.sharedFollows.sort(byFollowers);
-            result.sharedMutuals.sort(byFollowers);
-            result.onlyAFollows.sort(byFollowers);
-            result.onlyBFollows.sort(byFollowers);
+            enrichedResult.sharedFollowers.sort(byFollowers);
+            enrichedResult.sharedFollows.sort(byFollowers);
+            enrichedResult.sharedMutuals.sort(byFollowers);
+            enrichedResult.onlyAFollows.sort(byFollowers);
+            enrichedResult.onlyBFollows.sort(byFollowers);
 
-            setState({ status: "done", result });
+            setState({ status: "done", result: enrichedResult });
         } catch (e) {
             setState({ status: "error", error: String(e) });
         }
@@ -176,13 +192,17 @@ const Page: Component = () => {
         const a = params.handleA;
         const b = params.handleB;
         if (a && b) {
-            const actorA = cleanHandle(decodeURIComponent(a));
-            const actorB = cleanHandle(decodeURIComponent(b));
-            if (actorA !== decodeURIComponent(a) || actorB !== decodeURIComponent(b)) {
-                navigate(`/${encodeURIComponent(actorA)}/${encodeURIComponent(actorB)}`, { replace: true });
-            }
-            if (state().status === "idle") {
-                doCompare(actorA, actorB);
+            try {
+                const actorA = cleanHandle(decodeURIComponent(a));
+                const actorB = cleanHandle(decodeURIComponent(b));
+                if (actorA !== decodeURIComponent(a) || actorB !== decodeURIComponent(b)) {
+                    navigate(`/${encodeURIComponent(actorA)}/${encodeURIComponent(actorB)}`, { replace: true });
+                }
+                if (state().status === "idle") {
+                    doCompare(actorA, actorB);
+                }
+            } catch (err) {
+                setState({ status: "error", error: err instanceof Error ? err.message : "Invalid handle" });
             }
         }
     }
@@ -204,13 +224,17 @@ const Page: Component = () => {
             <form
                 onSubmit={(e) => {
                     e.preventDefault();
-                    const form = e.target as HTMLFormElement;
-                    const a = cleanHandle(form.handleA.value);
-                    const b = cleanHandle(form.handleB.value);
-                    if (!a || !b) return;
-                    setState({ status: "idle" });
-                    navigate(`/${encodeURIComponent(a)}/${encodeURIComponent(b)}`);
-                    doCompare(a, b);
+                    try {
+                        const form = e.target as HTMLFormElement;
+                        const a = cleanHandle(form.handleA.value);
+                        const b = cleanHandle(form.handleB.value);
+                        if (!a || !b) return;
+                        setState({ status: "idle" });
+                        navigate(`/${encodeURIComponent(a)}/${encodeURIComponent(b)}`);
+                        doCompare(a, b);
+                    } catch (err) {
+                        setState({ status: "error", error: err instanceof Error ? err.message : "Invalid handle" });
+                    }
                 }}
             >
                 <div class="input-row">

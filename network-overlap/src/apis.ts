@@ -57,11 +57,11 @@ export interface NetworkData {
 export interface OverlapResult {
     profileA: ProfileViewDetailed;
     profileB: ProfileViewDetailed;
-    sharedFollowers: ProfileViewDetailed[];
-    sharedFollows: ProfileViewDetailed[];
-    sharedMutuals: ProfileViewDetailed[];
-    onlyAFollows: ProfileViewDetailed[];
-    onlyBFollows: ProfileViewDetailed[];
+    sharedFollowers: ProfileView[];
+    sharedFollows: ProfileView[];
+    sharedMutuals: ProfileView[];
+    onlyAFollows: ProfileView[];
+    onlyBFollows: ProfileView[];
     followersA: number;
     followersB: number;
     followsA: number;
@@ -133,11 +133,11 @@ export const computeOverlap = (a: NetworkData, b: NetworkData): OverlapResult =>
     return {
         profileA: a.profile,
         profileB: b.profile,
-        sharedFollowers: sharedFollowers as ProfileViewDetailed[],
-        sharedFollows: sharedFollows as ProfileViewDetailed[],
-        sharedMutuals: sharedMutuals as ProfileViewDetailed[],
-        onlyAFollows: onlyAFollows as ProfileViewDetailed[],
-        onlyBFollows: onlyBFollows as ProfileViewDetailed[],
+        sharedFollowers,
+        sharedFollows,
+        sharedMutuals,
+        onlyAFollows,
+        onlyBFollows,
         followersA: a.followers.size,
         followersB: b.followers.size,
         followsA: a.follows.size,

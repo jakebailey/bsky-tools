@@ -5,7 +5,7 @@ import "./App.css";
 import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createResource, createSignal, For, Match, Show, Switch } from "solid-js";
-import { cleanHandle, isEngagementHacker, profilePrefix } from "../../shared/bsky";
+import { isEngagementHacker, profilePrefix } from "../../shared/bsky";
 import { ProfileCard } from "../../shared/ProfileCard";
 import { RichText } from "../../shared/RichText";
 import { getBlueskyListPurpose, getClearskyLists, getProfile, getProfiles, type ProfileViewDetailed } from "./apis";
@@ -67,7 +67,8 @@ const Page: Component = () => {
             <form
                 onSubmit={(e) => {
                     e.preventDefault();
-                    const value = cleanHandle((e.target as HTMLFormElement).handle.value);
+                    const value = (e.target as HTMLFormElement).handle.value.trim();
+                    if (!value) return;
                     navigate(`/${encodeURIComponent(value)}`);
                 }}
             >
@@ -151,7 +152,7 @@ const Page: Component = () => {
             <p class="footer">
                 This site queries the Bluesky and Clearsky APIs directly in your browser. No data is stored. Note that
                 all content is generated from those APIs; I can't be responsible for anything that shows up here, and
-                list creator follower count is not neccesarily a good measure of quality or trustworthiness. Use these
+                list creator follower count is not necessarily a good measure of quality or trustworthiness. Use these
                 lists at your own risk.
             </p>
         </div>
