@@ -4,7 +4,7 @@ import "./App.css";
 
 import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
-import { type Component, createSignal, For, Match, Show, Switch } from "solid-js";
+import { type Component, createEffect, createSignal, For, Match, Show, Switch } from "solid-js";
 import { cleanHandle, isEngagementHacker, profilePrefix } from "../../shared/bsky";
 import { ProfileCard } from "../../shared/ProfileCard";
 import {
@@ -187,8 +187,8 @@ const Page: Component = () => {
         }
     };
 
-    // Normalize URL casing and auto-start if both handles are present
-    {
+    // React to URL changes (back/forward navigation, initial load, form submit)
+    createEffect(() => {
         const a = params.handleA;
         const b = params.handleB;
         if (a && b) {
@@ -197,15 +197,16 @@ const Page: Component = () => {
                 const actorB = cleanHandle(decodeURIComponent(b));
                 if (actorA !== decodeURIComponent(a) || actorB !== decodeURIComponent(b)) {
                     navigate(`/${encodeURIComponent(actorA)}/${encodeURIComponent(actorB)}`, { replace: true });
+                    return;
                 }
-                if (state().status === "idle") {
-                    doCompare(actorA, actorB);
-                }
+                doCompare(actorA, actorB);
             } catch (err) {
                 setState({ status: "error", error: err instanceof Error ? err.message : "Invalid handle" });
             }
+        } else {
+            setState({ status: "idle" });
         }
-    }
+    });
 
     const formatProgress = (info: ProgressInfo | null, handle: string) => {
         if (!info) return `${handle}: resolving...`;
@@ -231,7 +232,6 @@ const Page: Component = () => {
                         if (!a || !b) return;
                         setState({ status: "idle" });
                         navigate(`/${encodeURIComponent(a)}/${encodeURIComponent(b)}`);
-                        doCompare(a, b);
                     } catch (err) {
                         setState({ status: "error", error: err instanceof Error ? err.message : "Invalid handle" });
                     }

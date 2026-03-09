@@ -4,7 +4,7 @@ import "./App.css";
 
 import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
-import { type Component, createSignal, For, Match, Show, Switch } from "solid-js";
+import { type Component, createEffect, createSignal, For, Match, Show, Switch } from "solid-js";
 import { isEngagementHacker, profilePrefix } from "../../shared/bsky";
 import { ProfileCard } from "../../shared/ProfileCard";
 import { RichText } from "../../shared/RichText";
@@ -123,13 +123,15 @@ const Page: Component = () => {
         }
     };
 
-    // Auto-start if handle is in the URL
-    {
+    // React to URL changes (back/forward navigation, initial load, form submit)
+    createEffect(() => {
         const handle = params.handle;
-        if (handle && state().status === "idle") {
+        if (handle) {
             doSearch(decodeURIComponent(handle));
+        } else {
+            setState({ status: "idle" });
         }
-    }
+    });
 
     const loadMore = async () => {
         const s = state();
@@ -156,7 +158,6 @@ const Page: Component = () => {
                     const value = (e.target as HTMLFormElement).handle.value.trim();
                     if (!value) return;
                     navigate(`/${encodeURIComponent(value)}`);
-                    doSearch(value);
                 }}
             >
                 <input
@@ -187,13 +188,13 @@ const Page: Component = () => {
                 <Match when={state().status === "loading"}>
                     <div class="loading">
                         <p class="progress">
-                            {(state() as PageState & { status: "loading" }).progress}
+                            {(state() as PageState & { status: "loading"; }).progress}
                         </p>
                     </div>
                 </Match>
                 <Match when={state().status === "error"}>
                     <p class="error">
-                        Error: {(state() as PageState & { status: "error" }).error}
+                        Error: {(state() as PageState & { status: "error"; }).error}
                     </p>
                 </Match>
                 <Match when={state().status === "done"}>
