@@ -71,7 +71,10 @@ const ProfileListItem: Component<{ profile: ProfileViewDetailed; }> = (props) =>
             <span class="handle">@{props.profile.handle}</span>
             <Show when={props.profile.followersCount != null}>
                 {" "}
-                <span class="follower-count">({props.profile.followersCount!.toLocaleString()} followers)</span>
+                <span class="follower-count">
+                    ({props.profile.followersCount!.toLocaleString()} followers,{" "}
+                    {props.profile.followsCount!.toLocaleString()} following)
+                </span>
             </Show>
         </div>
     </li>

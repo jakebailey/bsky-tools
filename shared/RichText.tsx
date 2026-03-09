@@ -24,7 +24,7 @@ function renderTextWithLinks(text: string): JSX.Element {
     return <>{parts}</>;
 }
 
-export const RichText: Component<{ text: string }> = (props) => {
+export const RichText: Component<{ text: string; }> = (props) => {
     const tokens = () => tokenize(props.text);
     return (
         <>

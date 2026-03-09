@@ -4,8 +4,8 @@ import "./App.css";
 
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createResource, For, Match, Show, Switch } from "solid-js";
-import { RichText } from "../../shared/RichText";
 import { cleanHandle, profilePrefix } from "../../shared/bsky";
+import { RichText } from "../../shared/RichText";
 import { getBlueskyListPurpose, getClearskyLists, getProfile, getProfiles, type ProfileViewDetailed } from "./apis";
 
 async function doWork(queryHandle: string) {
