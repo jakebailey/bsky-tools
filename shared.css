@@ -122,3 +122,64 @@ html > body {
 .error {
     color: #ff6b6b;
 }
+
+.handle-input-wrapper {
+    position: relative;
+    flex: 1;
+}
+
+.handle-input-wrapper input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.handle-suggestions {
+    position: absolute;
+    z-index: 100;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin: 2px 0 0 0;
+    padding: 0;
+    list-style: none;
+    background: var(--background);
+    border: 1px solid #555;
+    border-radius: 4px;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.handle-suggestions li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+.handle-suggestions li:hover,
+.suggestion-selected {
+    background: var(--button-hover);
+}
+
+.suggestion-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.suggestion-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.suggestion-name {
+    font-size: 0.9em;
+}
+
+.suggestion-handle {
+    font-size: 0.85em;
+    opacity: 0.6;
+}

@@ -6,6 +6,7 @@ import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createEffect, createSignal, For, Match, Show, Switch } from "solid-js";
 import { cleanHandle, isEngagementHacker, profilePrefix } from "../../shared/bsky";
+import { HandleInput } from "../../shared/HandleInput";
 import { ProfileCard } from "../../shared/ProfileCard";
 import {
     type ActorIdentifier,
@@ -281,19 +282,17 @@ const Page: Component = () => {
                 }}
             >
                 <div class="input-row">
-                    <input
+                    <HandleInput
                         id="handleA"
                         name="handleA"
-                        type="text"
                         placeholder="First handle, DID, or profile link"
                         value={decodeURIComponent(params.handleA || "")}
                         autofocus
                     />
                     <span class="vs">vs</span>
-                    <input
+                    <HandleInput
                         id="handleB"
                         name="handleB"
-                        type="text"
                         placeholder="Second handle, DID, or profile link"
                         value={decodeURIComponent(params.handleB || "")}
                     />

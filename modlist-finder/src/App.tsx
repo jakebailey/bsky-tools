@@ -6,6 +6,7 @@ import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createEffect, createSignal, For, Match, Show, Switch } from "solid-js";
 import { isEngagementHacker, mapConcurrent, profilePrefix } from "../../shared/bsky";
+import { HandleInput } from "../../shared/HandleInput";
 import { ProfileCard } from "../../shared/ProfileCard";
 import { RichText } from "../../shared/RichText";
 import {
@@ -174,11 +175,9 @@ const Page: Component = () => {
                     navigate(`/${encodeURIComponent(value)}`);
                 }}
             >
-                <input
+                <HandleInput
                     id="handle"
                     name="handle"
-                    type="text"
-                    placeholder="Enter handle, DID, or profile link"
                     value={decodeURIComponent(params.handle || "")}
                     autofocus
                 />
