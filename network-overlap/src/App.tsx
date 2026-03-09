@@ -3,6 +3,7 @@ import "../../shared.css";
 import "./App.css";
 
 import { isActorIdentifier } from "@atcute/lexicons/syntax";
+import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createSignal, For, type JSX, Match, Show, Switch } from "solid-js";
 import { cleanHandle, profilePrefix } from "../../shared/bsky";
@@ -55,8 +56,14 @@ const ProfileCard: Component<{ profile: ProfileViewDetailed; }> = (props) => (
     </blockquote>
 );
 
-const ProfileListItem: Component<{ profile: ProfileViewDetailed; }> = (props) => (
-    <li class="profile-item">
+const isEngagementHacker = (profile: ProfileViewDetailed) => {
+    const follows = profile.followsCount ?? 0;
+    const followers = profile.followersCount ?? 0;
+    return follows > 10_000 && followers > 0 && follows / followers > 3;
+};
+
+const ProfileListItem: Component<{ profile: ProfileViewDetailed; dimHackers: boolean; }> = (props) => (
+    <li class="profile-item" classList={{ "engagement-hacker": props.dimHackers && isEngagementHacker(props.profile) }}>
         <Show when={props.profile.avatar}>
             <img
                 src={props.profile.avatar!}
@@ -76,6 +83,12 @@ const ProfileListItem: Component<{ profile: ProfileViewDetailed; }> = (props) =>
                     {props.profile.followsCount!.toLocaleString()} following)
                 </span>
             </Show>
+            <Show when={isEngagementHacker(props.profile)}>
+                {" "}
+                <span class="hacker-badge" title="Suspected engagement hacker (following 10k+ with high follow ratio)">
+                    ⚠️
+                </span>
+            </Show>
         </div>
     </li>
 );
@@ -87,6 +100,7 @@ const OverlapSection: Component<{
     countA: number;
     countB: number;
     collapsed?: boolean;
+    dimHackers: boolean;
 }> = (props) => {
     const [expanded, setExpanded] = createSignal(!props.collapsed);
     const [showAll, setShowAll] = createSignal(false);
@@ -110,7 +124,7 @@ const OverlapSection: Component<{
                 <p class="section-desc">{props.description}</p>
                 <ul class="profile-list">
                     <For each={displayed()}>
-                        {(profile) => <ProfileListItem profile={profile} />}
+                        {(profile) => <ProfileListItem profile={profile} dimHackers={props.dimHackers} />}
                     </For>
                 </ul>
                 <Show when={props.profiles.length > 50 && !showAll()}>
@@ -140,6 +154,7 @@ const Page: Component = () => {
     const navigate = useNavigate();
     const params = useParams<{ handleA?: string; handleB?: string; }>();
     const [state, setState] = createSignal<CompareState>({ status: "idle" });
+    const [dimHackers, setDimHackers] = makePersisted(createSignal(true), { name: "dimHackers" });
 
     const doCompare = async (handleA: ActorIdentifier, handleB: ActorIdentifier) => {
         setState({ status: "loading", progressA: null, progressB: null, profileA: null, profileB: null });
@@ -354,12 +369,22 @@ const Page: Component = () => {
                                     </table>
                                 </div>
 
+                                <label class="dim-toggle">
+                                    <input
+                                        type="checkbox"
+                                        checked={dimHackers()}
+                                        onChange={(e) => setDimHackers(e.currentTarget.checked)}
+                                    />{" "}
+                                    Dim suspected engagement hackers
+                                </label>
+
                                 <OverlapSection
                                     title="Shared Mutuals"
                                     description={`People both @${result().profileA.handle} and @${result().profileB.handle} follow and are followed by`}
                                     profiles={result().sharedMutuals}
                                     countA={result().followsA}
                                     countB={result().followsB}
+                                    dimHackers={dimHackers()}
                                 />
 
                                 <OverlapSection
@@ -368,6 +393,7 @@ const Page: Component = () => {
                                     profiles={result().sharedFollows}
                                     countA={result().followsA}
                                     countB={result().followsB}
+                                    dimHackers={dimHackers()}
                                 />
 
                                 <OverlapSection
@@ -376,6 +402,7 @@ const Page: Component = () => {
                                     profiles={result().sharedFollowers}
                                     countA={result().followersA}
                                     countB={result().followersB}
+                                    dimHackers={dimHackers()}
                                 />
 
                                 <OverlapSection
@@ -385,6 +412,7 @@ const Page: Component = () => {
                                     countA={result().followsA}
                                     countB={result().followsB}
                                     collapsed
+                                    dimHackers={dimHackers()}
                                 />
 
                                 <OverlapSection
@@ -394,6 +422,7 @@ const Page: Component = () => {
                                     countA={result().followsA}
                                     countB={result().followsB}
                                     collapsed
+                                    dimHackers={dimHackers()}
                                 />
                             </>
                         );
