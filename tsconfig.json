@@ -10,8 +10,7 @@
         "types": ["vite/client"],
         "noEmit": true,
         "isolatedModules": true,
-        "strict": true,
-        "rootDir": "src"
+        "strict": true
     },
-    "include": ["src"]
+    "include": ["modlist-finder/src", "network-overlap/src"]
 }

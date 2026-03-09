@@ -49,8 +49,8 @@ jobs:
       - name: pnpm install
         run: pnpm install
 
-      - name: Build site
-        run: pnpm run build:site
+      - name: Build
+        run: pnpm run build
 
       - name: Setup Pages
         id: pages

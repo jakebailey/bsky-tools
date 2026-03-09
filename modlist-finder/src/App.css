@@ -1,0 +1,8 @@
+form {
+    display: flex;
+}
+
+input[type="text"] {
+    flex-grow: 1;
+    margin-left: 6px;
+}

@@ -16,14 +16,11 @@ A collection of Bluesky tools, deployed to
 
 ```bash
 pnpm install
-pnpm dev:modlist-finder
-pnpm dev:network-overlap
+pnpm dev
 ```
 
 ## Build
 
 ```bash
-pnpm build:site
+pnpm build
 ```
-
-This builds all packages and assembles a combined site in `dist/`.

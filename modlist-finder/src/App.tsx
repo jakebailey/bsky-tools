@@ -1,4 +1,5 @@
 import "water.css/out/dark.min.css";
+import "../../shared.css";
 import "./App.css";
 
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
