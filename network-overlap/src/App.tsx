@@ -233,9 +233,11 @@ const Page: Component = () => {
 
     const formatProgress = (info: ProgressInfo | null, handle: string) => {
         if (!info) return `${handle}: resolving...`;
-        if (info.phase === "profile") return `${handle}: fetching network...`;
-        const total = info.total ? `/${info.total.toLocaleString()}` : "";
-        return `${handle}: ${info.current.toLocaleString()}${total} ${info.phase}`;
+        if (info.followers == null && info.follows == null) return `${handle}: fetching network...`;
+        const parts = [];
+        if (info.followers != null) parts.push(`${info.followers.toLocaleString()} followers`);
+        if (info.follows != null) parts.push(`${info.follows.toLocaleString()} following`);
+        return `${handle}: ${parts.join(", ")}`;
     };
 
     return (

@@ -5,15 +5,14 @@ import { getProfile, getProfiles, type ProfileView, type ProfileViewDetailed, rp
 export { type ActorIdentifier, getProfiles, type ProfileView, type ProfileViewDetailed } from "../../shared/bsky";
 
 export interface ProgressInfo {
-    phase: string;
-    current: number;
-    total?: number;
     profile?: ProfileViewDetailed;
+    followers?: number;
+    follows?: number;
 }
 
 export const getAllFollowers = async (
     actor: ActorIdentifier,
-    onProgress?: (info: ProgressInfo) => void,
+    onProgress?: (info: { current: number; }) => void,
 ): Promise<Map<string, ProfileView>> => {
     const all = new Map<string, ProfileView>();
     let cursor: string | undefined;
@@ -25,14 +24,14 @@ export const getAllFollowers = async (
             all.set(f.did, f);
         }
         cursor = res.cursor;
-        onProgress?.({ phase: "followers", current: all.size });
+        onProgress?.({ current: all.size });
     } while (cursor);
     return all;
 };
 
 export const getAllFollows = async (
     actor: ActorIdentifier,
-    onProgress?: (info: ProgressInfo) => void,
+    onProgress?: (info: { current: number; }) => void,
 ): Promise<Map<string, ProfileView>> => {
     const all = new Map<string, ProfileView>();
     let cursor: string | undefined;
@@ -44,7 +43,7 @@ export const getAllFollows = async (
             all.set(f.did, f);
         }
         cursor = res.cursor;
-        onProgress?.({ phase: "follows", current: all.size });
+        onProgress?.({ current: all.size });
     } while (cursor);
     return all;
 };
@@ -74,13 +73,16 @@ export const fetchNetworkData = async (
     onProgress?: (info: ProgressInfo) => void,
 ): Promise<NetworkData> => {
     const profile = await getProfile(actor);
-    onProgress?.({ phase: "profile", current: 0, total: profile.followersCount, profile });
+    onProgress?.({ profile });
+    const progress: ProgressInfo = { profile };
     const [followers, follows] = await Promise.all([
         getAllFollowers(actor, (info) => {
-            onProgress?.({ ...info, total: profile.followersCount });
+            progress.followers = info.current;
+            onProgress?.({ ...progress });
         }),
         getAllFollows(actor, (info) => {
-            onProgress?.({ ...info, total: profile.followsCount });
+            progress.follows = info.current;
+            onProgress?.({ ...progress });
         }),
     ]);
     return { profile, followers, follows };
