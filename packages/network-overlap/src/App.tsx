@@ -1,0 +1,472 @@
+import "water.css/out/dark.min.css";
+import "./App.css";
+
+import { tokenize } from "@atcute/bluesky-richtext-parser";
+import { isActorIdentifier } from "@atcute/lexicons/syntax";
+import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
+import { type Component, createSignal, For, type JSX, Match, Show, Switch } from "solid-js";
+import {
+    type ActorIdentifier,
+    computeOverlap,
+    fetchNetworkData,
+    getProfiles,
+    type OverlapResult,
+    type ProfileViewDetailed,
+    type ProgressInfo,
+} from "./apis";
+
+const profilePrefix = "https://bsky.app/profile/";
+
+// Ported from the official Bluesky app's RichText.tsx for bare URL detection
+const URL_RE = /(^|\s|\()((https?:\/\/[\S]+)|((?<domain>[a-z][a-z0-9]*(\.[a-z0-9]+)+)[\S]*))/gi;
+
+function renderTextWithLinks(text: string): JSX.Element {
+    const parts: JSX.Element[] = [];
+    let lastIndex = 0;
+    for (const match of text.matchAll(URL_RE)) {
+        const fullMatch = match[2];
+        const idx = match.index! + match[1].length;
+        if (idx > lastIndex) {
+            parts.push(text.slice(lastIndex, idx));
+        }
+        const href = fullMatch.startsWith("http") ? fullMatch : `https://${fullMatch}`;
+        parts.push(<a href={href}>{fullMatch}</a>);
+        lastIndex = idx + fullMatch.length;
+    }
+    if (lastIndex < text.length) {
+        parts.push(text.slice(lastIndex));
+    }
+    return <>{parts}</>;
+}
+
+const RichText: Component<{ text: string; }> = (props) => {
+    const tokens = () => tokenize(props.text);
+    return (
+        <>
+            <For each={tokens()}>
+                {(token) => {
+                    switch (token.type) {
+                        case "mention":
+                            return <a href={`${profilePrefix}${token.handle}`}>@{token.handle}</a>;
+                        case "autolink":
+                            return <a href={token.url}>{token.raw}</a>;
+                        default:
+                            return renderTextWithLinks("content" in token ? token.content : token.raw);
+                    }
+                }}
+            </For>
+        </>
+    );
+};
+
+function cleanHandle(value: string): ActorIdentifier {
+    value = value.trim().toLowerCase();
+    if (value.startsWith(profilePrefix)) {
+        value = value.slice(profilePrefix.length).split("/")[0];
+    }
+    if (value.startsWith("@")) {
+        value = value.slice(1);
+    }
+    if (value.startsWith("at://")) {
+        value = value.slice("at://".length);
+    }
+    if (!isActorIdentifier(value)) {
+        throw new Error(`Invalid handle: ${value}`);
+    }
+    return value;
+}
+
+const ProfileCard: Component<{ profile: ProfileViewDetailed; }> = (props) => (
+    <blockquote>
+        <p>
+            <Show when={props.profile.avatar}>
+                <img
+                    src={props.profile.avatar!}
+                    alt=""
+                    style={{
+                        width: "24px",
+                        height: "24px",
+                        "border-radius": "50%",
+                        "vertical-align": "middle",
+                        "margin-right": "6px",
+                    }}
+                />
+            </Show>
+            <a href={`${profilePrefix}${props.profile.handle}`}>
+                {props.profile.displayName || props.profile.handle}
+            </a>{" "}
+            <span class="handle">@{props.profile.handle}</span>
+        </p>
+        <Show when={props.profile.description}>
+            <p class="description">
+                <RichText text={props.profile.description!} />
+            </p>
+        </Show>
+        <p class="stats">
+            <Show when={props.profile.followersCount != null}>
+                <span>{props.profile.followersCount!.toLocaleString()} followers</span>
+                {" · "}
+            </Show>
+            <Show when={props.profile.followsCount != null}>
+                <span>{props.profile.followsCount!.toLocaleString()} following</span>
+            </Show>
+        </p>
+    </blockquote>
+);
+
+const ProfileListItem: Component<{ profile: ProfileViewDetailed; }> = (props) => (
+    <li class="profile-item">
+        <Show when={props.profile.avatar}>
+            <img
+                src={props.profile.avatar!}
+                alt=""
+                class="avatar-small"
+            />
+        </Show>
+        <div>
+            <a href={`${profilePrefix}${props.profile.handle}`}>
+                {props.profile.displayName || props.profile.handle}
+            </a>{" "}
+            <span class="handle">@{props.profile.handle}</span>
+            <Show when={props.profile.followersCount != null}>
+                {" "}
+                <span class="follower-count">({props.profile.followersCount!.toLocaleString()} followers)</span>
+            </Show>
+        </div>
+    </li>
+);
+
+const OverlapSection: Component<{
+    title: string;
+    description: string;
+    profiles: ProfileViewDetailed[];
+    countA: number;
+    countB: number;
+    collapsed?: boolean;
+}> = (props) => {
+    const [expanded, setExpanded] = createSignal(!props.collapsed);
+    const [showAll, setShowAll] = createSignal(false);
+    const displayed = () => showAll() ? props.profiles : props.profiles.slice(0, 50);
+    const pctSmaller = () => {
+        const smaller = Math.min(props.countA, props.countB);
+        return smaller > 0 ? (props.profiles.length / smaller * 100).toFixed(1) : "0";
+    };
+
+    return (
+        <div class="overlap-section">
+            <h2
+                class="section-header"
+                onClick={() => setExpanded(!expanded())}
+            >
+                <span class="toggle">{expanded() ? "▾" : "▸"}</span>
+                {props.title} ({props.profiles.length})
+                <span class="pct">— {pctSmaller()}% overlap</span>
+            </h2>
+            <Show when={expanded()}>
+                <p class="section-desc">{props.description}</p>
+                <ul class="profile-list">
+                    <For each={displayed()}>
+                        {(profile) => <ProfileListItem profile={profile} />}
+                    </For>
+                </ul>
+                <Show when={props.profiles.length > 50 && !showAll()}>
+                    <button onClick={() => setShowAll(true)}>
+                        Show all {props.profiles.length}
+                    </button>
+                </Show>
+            </Show>
+        </div>
+    );
+};
+
+type CompareState =
+    | { status: "idle"; }
+    | {
+        status: "loading";
+        progressA: ProgressInfo | null;
+        progressB: ProgressInfo | null;
+        profileA: ProfileViewDetailed | null;
+        profileB: ProfileViewDetailed | null;
+    }
+    | { status: "enriching"; profileA: ProfileViewDetailed; profileB: ProfileViewDetailed; }
+    | { status: "done"; result: OverlapResult; }
+    | { status: "error"; error: string; };
+
+const Page: Component = () => {
+    const navigate = useNavigate();
+    const params = useParams<{ handleA?: string; handleB?: string; }>();
+    const [state, setState] = createSignal<CompareState>({ status: "idle" });
+
+    const doCompare = async (handleA: ActorIdentifier, handleB: ActorIdentifier) => {
+        setState({ status: "loading", progressA: null, progressB: null, profileA: null, profileB: null });
+
+        try {
+            const [dataA, dataB] = await Promise.all([
+                fetchNetworkData(handleA, (info) => {
+                    setState((prev) => {
+                        if (prev.status !== "loading") return prev;
+                        return { ...prev, progressA: info, profileA: info.profile ?? prev.profileA } as CompareState & {
+                            status: "loading";
+                        };
+                    });
+                }),
+                fetchNetworkData(handleB, (info) => {
+                    setState((prev) => {
+                        if (prev.status !== "loading") return prev;
+                        return { ...prev, progressB: info, profileB: info.profile ?? prev.profileB } as CompareState & {
+                            status: "loading";
+                        };
+                    });
+                }),
+            ]);
+
+            setState({ status: "enriching", profileA: dataA.profile, profileB: dataB.profile });
+
+            const result = computeOverlap(dataA, dataB);
+
+            // Batch-fetch full profiles for shared users to get follower counts
+            const allDids = new Set([
+                ...result.sharedFollowers.map((p) => p.did),
+                ...result.sharedFollows.map((p) => p.did),
+                ...result.sharedMutuals.map((p) => p.did),
+                ...result.onlyAFollows.map((p) => p.did),
+                ...result.onlyBFollows.map((p) => p.did),
+            ]);
+            if (allDids.size > 0) {
+                const fullProfiles = await getProfiles([...allDids]);
+                const enrich = (profiles: ProfileViewDetailed[]) => profiles.map((p) => fullProfiles.get(p.did) ?? p);
+                result.sharedFollowers = enrich(result.sharedFollowers);
+                result.sharedFollows = enrich(result.sharedFollows);
+                result.sharedMutuals = enrich(result.sharedMutuals);
+                result.onlyAFollows = enrich(result.onlyAFollows);
+                result.onlyBFollows = enrich(result.onlyBFollows);
+            }
+
+            // Sort by follower count descending
+            const byFollowers = (a: ProfileViewDetailed, b: ProfileViewDetailed) =>
+                (b.followersCount ?? 0) - (a.followersCount ?? 0);
+            result.sharedFollowers.sort(byFollowers);
+            result.sharedFollows.sort(byFollowers);
+            result.sharedMutuals.sort(byFollowers);
+            result.onlyAFollows.sort(byFollowers);
+            result.onlyBFollows.sort(byFollowers);
+
+            setState({ status: "done", result });
+        } catch (e) {
+            setState({ status: "error", error: String(e) });
+        }
+    };
+
+    // Normalize URL casing if needed
+    {
+        const a = params.handleA;
+        const b = params.handleB;
+        if (a && b) {
+            const actorA = decodeURIComponent(a).toLowerCase();
+            const actorB = decodeURIComponent(b).toLowerCase();
+            if (actorA !== decodeURIComponent(a) || actorB !== decodeURIComponent(b)) {
+                navigate(`/${encodeURIComponent(actorA)}/${encodeURIComponent(actorB)}`, { replace: true });
+            }
+        }
+    }
+
+    const formatProgress = (info: ProgressInfo | null, handle: string) => {
+        if (!info) return `${handle}: resolving...`;
+        if (info.phase === "profile") return `${handle}: fetching network...`;
+        const total = info.total ? `/${info.total.toLocaleString()}` : "";
+        return `${handle}: ${info.current.toLocaleString()}${total} ${info.phase}`;
+    };
+
+    return (
+        <div>
+            <h1>Bluesky Network Overlap</h1>
+            <p class="subtitle">Compare the followers and follows of two Bluesky users</p>
+            <form
+                onSubmit={(e) => {
+                    e.preventDefault();
+                    const form = e.target as HTMLFormElement;
+                    const a = cleanHandle(form.handleA.value);
+                    const b = cleanHandle(form.handleB.value);
+                    if (!a || !b) return;
+                    setState({ status: "idle" });
+                    navigate(`/${encodeURIComponent(a)}/${encodeURIComponent(b)}`);
+                    doCompare(a, b);
+                }}
+            >
+                <div class="input-row">
+                    <input
+                        id="handleA"
+                        name="handleA"
+                        type="text"
+                        placeholder="First handle or profile link"
+                        value={decodeURIComponent(params.handleA || "")}
+                        autofocus
+                    />
+                    <span class="vs">vs</span>
+                    <input
+                        id="handleB"
+                        name="handleB"
+                        type="text"
+                        placeholder="Second handle or profile link"
+                        value={decodeURIComponent(params.handleB || "")}
+                    />
+                    <button type="submit">Compare</button>
+                </div>
+            </form>
+
+            <Switch>
+                <Match when={state().status === "loading"}>
+                    {(() => {
+                        const s = state() as CompareState & { status: "loading"; };
+                        return (
+                            <>
+                                <Show when={s.profileA || s.profileB}>
+                                    <div class="profiles-row">
+                                        <Show when={s.profileA} fallback={<blockquote class="profile-placeholder" />}>
+                                            <ProfileCard profile={s.profileA!} />
+                                        </Show>
+                                        <Show when={s.profileB} fallback={<blockquote class="profile-placeholder" />}>
+                                            <ProfileCard profile={s.profileB!} />
+                                        </Show>
+                                    </div>
+                                </Show>
+                                <div class="loading">
+                                    <p>Fetching network data...</p>
+                                    <p class="progress">
+                                        {formatProgress(s.progressA, decodeURIComponent(params.handleA || "User A"))}
+                                    </p>
+                                    <p class="progress">
+                                        {formatProgress(s.progressB, decodeURIComponent(params.handleB || "User B"))}
+                                    </p>
+                                    <p class="note">This may take a while for accounts with many followers.</p>
+                                </div>
+                            </>
+                        );
+                    })()}
+                </Match>
+                <Match when={state().status === "enriching"}>
+                    {(() => {
+                        const s = state() as CompareState & { status: "enriching"; };
+                        return (
+                            <>
+                                <div class="profiles-row">
+                                    <ProfileCard profile={s.profileA} />
+                                    <ProfileCard profile={s.profileB} />
+                                </div>
+                                <div class="loading">
+                                    <p>Computing overlap and fetching profile details...</p>
+                                </div>
+                            </>
+                        );
+                    })()}
+                </Match>
+                <Match when={state().status === "error"}>
+                    <p class="error">Error: {(state() as CompareState & { status: "error"; }).error}</p>
+                </Match>
+                <Match when={state().status === "done"}>
+                    {(() => {
+                        const result = () => (state() as CompareState & { status: "done"; }).result;
+                        return (
+                            <>
+                                <div class="profiles-row">
+                                    <ProfileCard profile={result().profileA} />
+                                    <ProfileCard profile={result().profileB} />
+                                </div>
+
+                                <div class="summary">
+                                    <h2>Summary</h2>
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th></th>
+                                                <th>@{result().profileA.handle}</th>
+                                                <th>@{result().profileB.handle}</th>
+                                                <th>Shared</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td>Followers</td>
+                                                <td>{result().followersA.toLocaleString()}</td>
+                                                <td>{result().followersB.toLocaleString()}</td>
+                                                <td>{result().sharedFollowers.length.toLocaleString()}</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Following</td>
+                                                <td>{result().followsA.toLocaleString()}</td>
+                                                <td>{result().followsB.toLocaleString()}</td>
+                                                <td>{result().sharedFollows.length.toLocaleString()}</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Mutuals</td>
+                                                <td></td>
+                                                <td></td>
+                                                <td>{result().sharedMutuals.length.toLocaleString()}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <OverlapSection
+                                    title="Shared Mutuals"
+                                    description={`People both @${result().profileA.handle} and @${result().profileB.handle} follow and are followed by`}
+                                    profiles={result().sharedMutuals}
+                                    countA={result().followsA}
+                                    countB={result().followsB}
+                                />
+
+                                <OverlapSection
+                                    title="Shared Follows"
+                                    description={`People both @${result().profileA.handle} and @${result().profileB.handle} follow`}
+                                    profiles={result().sharedFollows}
+                                    countA={result().followsA}
+                                    countB={result().followsB}
+                                />
+
+                                <OverlapSection
+                                    title="Shared Followers"
+                                    description={`People who follow both @${result().profileA.handle} and @${result().profileB.handle}`}
+                                    profiles={result().sharedFollowers}
+                                    countA={result().followersA}
+                                    countB={result().followersB}
+                                />
+
+                                <OverlapSection
+                                    title={`Only @${result().profileA.handle} follows`}
+                                    description={`People @${result().profileA.handle} follows but @${result().profileB.handle} doesn't`}
+                                    profiles={result().onlyAFollows}
+                                    countA={result().followsA}
+                                    countB={result().followsB}
+                                    collapsed
+                                />
+
+                                <OverlapSection
+                                    title={`Only @${result().profileB.handle} follows`}
+                                    description={`People @${result().profileB.handle} follows but @${result().profileA.handle} doesn't`}
+                                    profiles={result().onlyBFollows}
+                                    countA={result().followsA}
+                                    countB={result().followsB}
+                                    collapsed
+                                />
+                            </>
+                        );
+                    })()}
+                </Match>
+            </Switch>
+
+            <p class="footer">
+                This site queries the Bluesky API directly in your browser. No data is stored.
+            </p>
+        </div>
+    );
+};
+
+const App: Component = () => {
+    return (
+        <HashRouter root={(props) => <>{props.children}</>}>
+            <Route path="/:handleA?/:handleB?" component={Page} />
+        </HashRouter>
+    );
+};
+
+export default App;

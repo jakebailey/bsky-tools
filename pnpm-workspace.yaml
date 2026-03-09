@@ -1,0 +1,9 @@
+packages:
+  - packages/*
+
+onlyBuiltDependencies:
+  - esbuild
+  - msgpackr-extract
+
+overrides:
+  vite: ^8.0.0-beta.0

@@ -1,0 +1,195 @@
+:root {
+    --background-body: #303030;
+    --background: #353535;
+    --background-alt: #303030;
+    --button-hover: #444;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 0;
+}
+
+.subtitle {
+    text-align: center;
+    opacity: 0.7;
+    margin-top: 4px;
+}
+
+.input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.input-row input[type="text"] {
+    flex: 1;
+    margin: 0;
+}
+
+.input-row button {
+    margin: 0;
+}
+
+.vs {
+    opacity: 0.5;
+    font-style: italic;
+}
+
+blockquote {
+    font-style: normal;
+}
+
+blockquote > p:first-child {
+    margin-top: 0;
+}
+
+blockquote > p:last-child {
+    margin-bottom: 0;
+}
+
+.profiles-row {
+    display: flex;
+    gap: 16px;
+}
+
+.profiles-row > blockquote {
+    flex: 1;
+}
+
+.handle {
+    opacity: 0.6;
+    font-size: 0.9em;
+}
+
+.description {
+    font-size: 0.9em;
+    opacity: 0.8;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
+.stats {
+    font-size: 0.85em;
+    opacity: 0.6;
+}
+
+.summary table {
+    width: 100%;
+}
+
+.summary th, .summary td {
+    text-align: center;
+}
+
+.summary th:first-child, .summary td:first-child {
+    text-align: left;
+}
+
+.overlap-section {
+    margin-top: 24px;
+}
+
+.section-header {
+    cursor: pointer;
+    user-select: none;
+}
+
+.toggle {
+    font-size: 0.7em;
+    margin-right: 6px;
+}
+
+.pct {
+    font-size: 0.7em;
+    opacity: 0.6;
+    font-weight: normal;
+}
+
+.section-desc {
+    opacity: 0.7;
+    font-size: 0.9em;
+    margin-top: 0;
+}
+
+.profile-list {
+    list-style: none;
+    padding: 0;
+}
+
+.profile-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+}
+
+.avatar-small {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.follower-count {
+    opacity: 0.5;
+    font-size: 0.85em;
+}
+
+.loading {
+    text-align: center;
+    padding: 24px 0;
+}
+
+.progress {
+    font-family: monospace;
+    font-size: 0.9em;
+    opacity: 0.7;
+    margin: 4px 0;
+}
+
+.note {
+    opacity: 0.5;
+    font-size: 0.85em;
+    margin-top: 12px;
+}
+
+.error {
+    color: #ff6b6b;
+}
+
+.footer {
+    opacity: 0.5;
+    font-size: 0.85em;
+    text-align: center;
+    margin-top: 32px;
+}
+
+@media only screen and (min-width: 961px) {
+    html > body {
+        max-width: 960px;
+    }
+}
+
+@media only screen and (max-width: 960px) {
+    html > body {
+        max-width: 100%;
+    }
+
+    .profiles-row {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .input-row {
+        flex-wrap: wrap;
+    }
+
+    .input-row input[type="text"] {
+        min-width: 0;
+    }
+
+    .vs {
+        display: none;
+    }
+}
