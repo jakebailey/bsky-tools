@@ -59,6 +59,7 @@ const Page: Component = () => {
     const [info] = createResource(() => params.handle || undefined, doWork);
     return (
         <div>
+            <a href=".." class="back-link">← Bluesky Tools</a>
             <h1>Bluesky Moderation List Finder</h1>
             <br />
             <form

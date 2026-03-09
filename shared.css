@@ -43,6 +43,11 @@ html > body {
     padding: 0;
 }
 
+.back-link {
+    font-size: 0.85em;
+    opacity: 0.6;
+}
+
 .profile-item {
     display: flex;
     align-items: center;

@@ -205,6 +205,7 @@ const Page: Component = () => {
 
     return (
         <div>
+            <a href=".." class="back-link">← Bluesky Tools</a>
             <h1>Bluesky Network Overlap</h1>
             <p class="subtitle">Compare the followers and follows of two Bluesky users</p>
             <form
