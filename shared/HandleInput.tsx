@@ -1,6 +1,6 @@
 import type { AppBskyActorDefs } from "@atcute/bluesky";
 import { ok } from "@atcute/client";
-import { type Component, createSignal, For, onCleanup, Show } from "solid-js";
+import { type Component, createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { rpc } from "./bsky";
 
 type ProfileViewBasic = AppBskyActorDefs.ProfileViewBasic;
@@ -24,6 +24,10 @@ export const HandleInput: Component<{
     const [query, setQuery] = createSignal(props.value ?? "");
     const [suggestions, setSuggestions] = createSignal<ProfileViewBasic[]>([]);
     const [showDropdown, setShowDropdown] = createSignal(false);
+
+    createEffect(() => {
+        setQuery(props.value ?? "");
+    });
     const [selectedIndex, setSelectedIndex] = createSignal(-1);
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
     let abortController: AbortController | undefined;

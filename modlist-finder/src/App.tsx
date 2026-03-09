@@ -5,7 +5,7 @@ import "./App.css";
 import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createEffect, createSignal, For, Match, Show, Switch } from "solid-js";
-import { isEngagementHacker, mapConcurrent, profilePrefix } from "../../shared/bsky";
+import { cleanHandle, isEngagementHacker, mapConcurrent, profilePrefix } from "../../shared/bsky";
 import { HandleInput } from "../../shared/HandleInput";
 import { ProfileCard } from "../../shared/ProfileCard";
 import { RichText } from "../../shared/RichText";
@@ -76,7 +76,7 @@ async function doWork(
     onProgress("Resolving profile...");
     const profile = await getProfile(queryHandle, signal);
     onProgress("Fetching lists from Clearsky...", profile);
-    const clearskyResult = await getClearskyLists(queryHandle, 0, 3, signal);
+    const clearskyResult = await getClearskyLists(profile.handle, 0, 3, signal);
     onProgress(`Checking ${clearskyResult.lists.length} lists...`, profile);
     const lists = await processLists(clearskyResult.lists, (checked, total) => {
         onProgress(`Checking lists... ${checked}/${total}`, profile);
@@ -149,7 +149,7 @@ const Page: Component = () => {
         setLoadingMore(true);
         try {
             const result = await getClearskyLists(
-                decodeURIComponent(params.handle!),
+                s.profile.handle,
                 s.nextPage,
                 3,
                 abortController?.signal,
@@ -170,9 +170,13 @@ const Page: Component = () => {
             <form
                 onSubmit={(e) => {
                     e.preventDefault();
-                    const value = (e.target as HTMLFormElement).handle.value.trim();
-                    if (!value) return;
-                    navigate(`/${encodeURIComponent(value)}`);
+                    try {
+                        const value = cleanHandle((e.target as HTMLFormElement).handle.value);
+                        if (!value) return;
+                        navigate(`/${encodeURIComponent(value)}`);
+                    } catch (err) {
+                        setState({ status: "error", error: err instanceof Error ? err.message : "Invalid handle" });
+                    }
                 }}
             >
                 <HandleInput
