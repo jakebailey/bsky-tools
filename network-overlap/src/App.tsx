@@ -122,14 +122,21 @@ const Page: Component = () => {
     const navigate = useNavigate();
     const params = useParams<{ handleA?: string; handleB?: string; }>();
     const [state, setState] = createSignal<CompareState>({ status: "idle" });
+    let abortController: AbortController | undefined;
     const [dimHackers, setDimHackers] = makePersisted(createSignal(true), { name: "dimHackers" });
 
     const doCompare = async (handleA: ActorIdentifier, handleB: ActorIdentifier) => {
+        abortController?.abort();
+        const controller = new AbortController();
+        abortController = controller;
+        const signal = controller.signal;
         setState({ status: "loading", progressA: null, progressB: null, profileA: null, profileB: null });
 
         try {
             // Resolve profiles first to detect self-comparison before expensive network fetches
-            const [profileA, profileB] = await Promise.all([getProfile(handleA), getProfile(handleB)]);
+            const [profileA, profileB] = await Promise.all([getProfile(handleA, signal), getProfile(handleB, signal)]);
+
+            if (signal.aborted) return;
 
             if (profileA.did === profileB.did) {
                 setState({ status: "self-compare", profile: profileA });
@@ -142,23 +149,37 @@ const Page: Component = () => {
             });
 
             const [dataA, dataB] = await Promise.all([
-                fetchNetworkData(handleA, (info) => {
-                    setState((prev) => {
-                        if (prev.status !== "loading") return prev;
-                        return { ...prev, progressA: info } as CompareState & {
-                            status: "loading";
-                        };
-                    });
-                }, profileA),
-                fetchNetworkData(handleB, (info) => {
-                    setState((prev) => {
-                        if (prev.status !== "loading") return prev;
-                        return { ...prev, progressB: info } as CompareState & {
-                            status: "loading";
-                        };
-                    });
-                }, profileB),
+                fetchNetworkData(
+                    handleA,
+                    (info) => {
+                        if (signal.aborted) return;
+                        setState((prev) => {
+                            if (prev.status !== "loading") return prev;
+                            return { ...prev, progressA: info } as CompareState & {
+                                status: "loading";
+                            };
+                        });
+                    },
+                    profileA,
+                    signal,
+                ),
+                fetchNetworkData(
+                    handleB,
+                    (info) => {
+                        if (signal.aborted) return;
+                        setState((prev) => {
+                            if (prev.status !== "loading") return prev;
+                            return { ...prev, progressB: info } as CompareState & {
+                                status: "loading";
+                            };
+                        });
+                    },
+                    profileB,
+                    signal,
+                ),
             ]);
+
+            if (signal.aborted) return;
 
             setState({ status: "enriching", profileA: dataA.profile, profileB: dataB.profile });
 
@@ -173,7 +194,7 @@ const Page: Component = () => {
                 ...result.onlyBFollows.map((p) => p.did),
             ]);
             const fullProfiles = allDids.size > 0
-                ? await getProfiles([...allDids])
+                ? await getProfiles([...allDids], signal)
                 : new Map<string, ProfileViewDetailed>();
             const enrich = (profiles: ProfileView[]): ProfileViewDetailed[] =>
                 profiles.map((p) => fullProfiles.get(p.did) ?? (p as ProfileViewDetailed));
@@ -198,6 +219,7 @@ const Page: Component = () => {
 
             setState({ status: "done", result: enrichedResult });
         } catch (e) {
+            if (signal.aborted) return;
             setState({ status: "error", error: String(e) });
         }
     };

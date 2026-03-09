@@ -38,9 +38,9 @@ export function cleanHandle(value: string): ActorIdentifier {
     return value;
 }
 
-export async function getProfile(handle: string): Promise<ProfileViewDetailed> {
+export async function getProfile(handle: string, signal?: AbortSignal): Promise<ProfileViewDetailed> {
     const actor = cleanHandle(handle);
-    return ok(rpc.get("app.bsky.actor.getProfile", { params: { actor } }));
+    return ok(rpc.get("app.bsky.actor.getProfile", { params: { actor }, signal }));
 }
 
 export const isEngagementHacker = (profile: ProfileViewDetailed) => {
@@ -49,11 +49,29 @@ export const isEngagementHacker = (profile: ProfileViewDetailed) => {
     return follows > 10_000 && followers > 0 && follows / followers > 3;
 };
 
-export async function getProfiles(actors: ActorIdentifier[]): Promise<Map<string, ProfileViewDetailed>> {
+export async function mapConcurrent<T, R>(items: T[], concurrency: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+    const results: R[] = new Array(items.length);
+    let nextIndex = 0;
+    const worker = async () => {
+        while (nextIndex < items.length) {
+            const i = nextIndex++;
+            results[i] = await fn(items[i]);
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+    return results;
+}
+
+export async function getProfiles(
+    actors: ActorIdentifier[],
+    signal?: AbortSignal,
+): Promise<Map<string, ProfileViewDetailed>> {
     const map = new Map<string, ProfileViewDetailed>();
     const chunks = chunked(actors, 25);
-    const results = await Promise.all(
-        chunks.map((chunk) => ok(rpc.get("app.bsky.actor.getProfiles", { params: { actors: chunk } }))),
+    const results = await mapConcurrent(
+        chunks,
+        5,
+        (chunk) => ok(rpc.get("app.bsky.actor.getProfiles", { params: { actors: chunk }, signal })),
     );
     for (const { profiles } of results) {
         for (const profile of profiles) {

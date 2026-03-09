@@ -38,12 +38,12 @@ const ClearskyListsSchema = v.object({
 
 type ClearskyList = v.InferOutput<typeof ClearskyListsSchema>["data"]["lists"][number];
 
-async function getClearskyListsPage(handle: string, page: number): Promise<ClearskyList[]> {
+async function getClearskyListsPage(handle: string, page: number, signal?: AbortSignal): Promise<ClearskyList[]> {
     await clearskyRateLimit();
     const u = `https://api.clearsky.services/api/v1/anon/get-list/${encodeURIComponent(handle)}${
         page ? `/${page + 1}` : ""
     }`;
-    const response = await fetch(u);
+    const response = await fetch(u, { signal });
     const json = await response.json();
     const parsed = v.parse(ClearskyListsSchema, json);
     return parsed.data.lists;
@@ -57,13 +57,18 @@ export interface ClearskyListsResult {
     nextPage: number;
 }
 
-export async function getClearskyLists(handle: string, startPage = 0, maxPages = 3): Promise<ClearskyListsResult> {
+export async function getClearskyLists(
+    handle: string,
+    startPage = 0,
+    maxPages = 3,
+    signal?: AbortSignal,
+): Promise<ClearskyListsResult> {
     const seen = new Set<string>();
     const allLists: ClearskyList[] = [];
     let hasMore = false;
 
     for (let page = startPage; page < startPage + maxPages; page++) {
-        const lists = await getClearskyListsPage(handle, page);
+        const lists = await getClearskyListsPage(handle, page, signal);
         for (const list of lists) {
             if (!seen.has(list.url)) {
                 seen.add(list.url);
@@ -79,9 +84,9 @@ export async function getClearskyLists(handle: string, startPage = 0, maxPages =
     return { lists: allLists, hasMore, nextPage: startPage + maxPages };
 }
 
-export async function getBlueskyListPurpose(did: Did, url: string): Promise<string> {
+export async function getBlueskyListPurpose(did: Did, url: string, signal?: AbortSignal): Promise<string> {
     const id = url.split("/").at(-1);
     const at = `at://${did}/app.bsky.graph.list/${id}` as const;
-    const res = await ok(rpc.get("app.bsky.graph.getList", { params: { list: at, limit: 1 } }));
+    const res = await ok(rpc.get("app.bsky.graph.getList", { params: { list: at, limit: 1 }, signal }));
     return res.list.purpose;
 }

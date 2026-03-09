@@ -20,12 +20,14 @@ const paginate = async (
     endpoint: "app.bsky.graph.getFollowers" | "app.bsky.graph.getFollows",
     actor: ActorIdentifier,
     onProgress?: (info: { current: number; }) => void,
+    signal?: AbortSignal,
 ): Promise<Map<string, ProfileView>> => {
     const all = new Map<string, ProfileView>();
     let cursor: string | undefined;
     do {
         const res = await ok(rpc.get(endpoint, {
             params: { actor, limit: 100, cursor },
+            signal,
         }));
         const profiles = "followers" in res ? res.followers : res.follows;
         for (const f of profiles) {
@@ -37,11 +39,17 @@ const paginate = async (
     return all;
 };
 
-export const getAllFollowers = (actor: ActorIdentifier, onProgress?: (info: { current: number; }) => void) =>
-    paginate("app.bsky.graph.getFollowers", actor, onProgress);
+export const getAllFollowers = (
+    actor: ActorIdentifier,
+    onProgress?: (info: { current: number; }) => void,
+    signal?: AbortSignal,
+) => paginate("app.bsky.graph.getFollowers", actor, onProgress, signal);
 
-export const getAllFollows = (actor: ActorIdentifier, onProgress?: (info: { current: number; }) => void) =>
-    paginate("app.bsky.graph.getFollows", actor, onProgress);
+export const getAllFollows = (
+    actor: ActorIdentifier,
+    onProgress?: (info: { current: number; }) => void,
+    signal?: AbortSignal,
+) => paginate("app.bsky.graph.getFollows", actor, onProgress, signal);
 
 export interface NetworkData {
     profile: ProfileViewDetailed;
@@ -67,19 +75,20 @@ export const fetchNetworkData = async (
     actor: ActorIdentifier,
     onProgress?: (info: ProgressInfo) => void,
     preResolved?: ProfileViewDetailed,
+    signal?: AbortSignal,
 ): Promise<NetworkData> => {
-    const profile = preResolved ?? await getProfile(actor);
+    const profile = preResolved ?? await getProfile(actor, signal);
     onProgress?.({ profile });
     const progress: ProgressInfo = { profile };
     const [followers, follows] = await Promise.all([
         getAllFollowers(actor, (info) => {
             progress.followers = info.current;
             onProgress?.({ ...progress });
-        }),
+        }, signal),
         getAllFollows(actor, (info) => {
             progress.follows = info.current;
             onProgress?.({ ...progress });
-        }),
+        }, signal),
     ]);
     return { profile, followers, follows };
 };

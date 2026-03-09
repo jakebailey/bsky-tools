@@ -5,7 +5,7 @@ import "./App.css";
 import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createEffect, createSignal, For, Match, Show, Switch } from "solid-js";
-import { isEngagementHacker, profilePrefix } from "../../shared/bsky";
+import { isEngagementHacker, mapConcurrent, profilePrefix } from "../../shared/bsky";
 import { ProfileCard } from "../../shared/ProfileCard";
 import { RichText } from "../../shared/RichText";
 import {
@@ -25,26 +25,28 @@ interface ListEntry {
 async function processLists(
     clearskyLists: ClearskyList[],
     onProgress?: (checked: number, total: number) => void,
+    signal?: AbortSignal,
 ): Promise<ListEntry[]> {
     let checked = 0;
-    const results = await Promise.allSettled(
-        clearskyLists.map(async (list) => {
-            const purpose = await getBlueskyListPurpose(list.did, list.url);
+    const results = await mapConcurrent(clearskyLists, 10, async (list) => {
+        try {
+            const purpose = await getBlueskyListPurpose(list.did, list.url, signal);
+            return { list, purpose, ok: true as const };
+        } catch {
+            return { list, purpose: "", ok: false as const };
+        } finally {
             checked++;
             onProgress?.(checked, clearskyLists.length);
-            return { list, purpose };
-        }),
-    );
+        }
+    });
 
     const modClearskyLists = results
-        .filter((r): r is PromiseFulfilledResult<{ list: ClearskyList; purpose: string; }> =>
-            r.status === "fulfilled" && r.value.purpose === "app.bsky.graph.defs#modlist"
-        )
-        .map((r) => r.value.list);
+        .filter((r) => r.ok && r.purpose === "app.bsky.graph.defs#modlist")
+        .map((r) => r.list);
 
     let profiles: Map<string, ProfileViewDetailed> | undefined;
     try {
-        profiles = await getProfiles(modClearskyLists.map((list) => list.did));
+        profiles = await getProfiles(modClearskyLists.map((list) => list.did), signal);
     } catch {
         // ignore
     }
@@ -68,15 +70,16 @@ async function processLists(
 async function doWork(
     queryHandle: string,
     onProgress: (msg: string, profile?: ProfileViewDetailed) => void,
+    signal?: AbortSignal,
 ) {
     onProgress("Resolving profile...");
-    const profile = await getProfile(queryHandle);
+    const profile = await getProfile(queryHandle, signal);
     onProgress("Fetching lists from Clearsky...", profile);
-    const clearskyResult = await getClearskyLists(queryHandle);
+    const clearskyResult = await getClearskyLists(queryHandle, 0, 3, signal);
     onProgress(`Checking ${clearskyResult.lists.length} lists...`, profile);
     const lists = await processLists(clearskyResult.lists, (checked, total) => {
         onProgress(`Checking lists... ${checked}/${total}`, profile);
-    });
+    }, signal);
     onProgress("Fetching list creator profiles...", profile);
 
     lists.sort((a, b) => (b.profile.followersCount ?? 0) - (a.profile.followersCount ?? 0));
@@ -94,6 +97,7 @@ const Page: Component = () => {
     const navigate = useNavigate();
     const params = useParams<{ handle?: string | undefined; }>();
     const [state, setState] = createSignal<PageState>({ status: "idle" });
+    let abortController: AbortController | undefined;
     const [dimHackers, setDimHackers] = makePersisted(createSignal(true), { name: "dimHackers" });
     const [extraLists, setExtraLists] = createSignal<ListEntry[]>([]);
     const [loadingMore, setLoadingMore] = createSignal(false);
@@ -105,12 +109,16 @@ const Page: Component = () => {
     };
 
     const doSearch = async (handle: string) => {
+        abortController?.abort();
+        const controller = new AbortController();
+        abortController = controller;
         setState({ status: "loading", progress: "Resolving profile..." });
         setExtraLists([]);
         try {
             const result = await doWork(handle, (msg, profile) => {
                 setState({ status: "loading", progress: msg, profile });
-            });
+            }, controller.signal);
+            if (controller.signal.aborted) return;
             setState({
                 status: "done",
                 profile: result.profile,
@@ -119,6 +127,7 @@ const Page: Component = () => {
                 nextPage: result.nextPage,
             });
         } catch (e) {
+            if (controller.signal.aborted) return;
             setState({ status: "error", error: String(e) });
         }
     };
