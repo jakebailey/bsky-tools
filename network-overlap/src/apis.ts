@@ -2,7 +2,13 @@ import { ok } from "@atcute/client";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 import { getProfile, getProfiles, type ProfileView, type ProfileViewDetailed, rpc } from "../../shared/bsky";
 
-export { type ActorIdentifier, getProfiles, type ProfileView, type ProfileViewDetailed } from "../../shared/bsky";
+export {
+    type ActorIdentifier,
+    getProfile,
+    getProfiles,
+    type ProfileView,
+    type ProfileViewDetailed,
+} from "../../shared/bsky";
 
 export interface ProgressInfo {
     profile?: ProfileViewDetailed;
@@ -60,8 +66,9 @@ export interface OverlapResult {
 export const fetchNetworkData = async (
     actor: ActorIdentifier,
     onProgress?: (info: ProgressInfo) => void,
+    preResolved?: ProfileViewDetailed,
 ): Promise<NetworkData> => {
-    const profile = await getProfile(actor);
+    const profile = preResolved ?? await getProfile(actor);
     onProgress?.({ profile });
     const progress: ProgressInfo = { profile };
     const [followers, follows] = await Promise.all([

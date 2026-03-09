@@ -11,6 +11,7 @@ import {
     type ActorIdentifier,
     computeOverlap,
     fetchNetworkData,
+    getProfile,
     getProfiles,
     type OverlapResult,
     type ProfileView,
@@ -114,7 +115,8 @@ type CompareState =
     }
     | { status: "enriching"; profileA: ProfileViewDetailed; profileB: ProfileViewDetailed; }
     | { status: "done"; result: EnrichedOverlapResult; }
-    | { status: "error"; error: string; };
+    | { status: "error"; error: string; }
+    | { status: "self-compare"; profile: ProfileViewDetailed; };
 
 const Page: Component = () => {
     const navigate = useNavigate();
@@ -126,23 +128,36 @@ const Page: Component = () => {
         setState({ status: "loading", progressA: null, progressB: null, profileA: null, profileB: null });
 
         try {
+            // Resolve profiles first to detect self-comparison before expensive network fetches
+            const [profileA, profileB] = await Promise.all([getProfile(handleA), getProfile(handleB)]);
+
+            if (profileA.did === profileB.did) {
+                setState({ status: "self-compare", profile: profileA });
+                return;
+            }
+
+            setState((prev) => {
+                if (prev.status !== "loading") return prev;
+                return { ...prev, profileA, profileB } as CompareState & { status: "loading"; };
+            });
+
             const [dataA, dataB] = await Promise.all([
                 fetchNetworkData(handleA, (info) => {
                     setState((prev) => {
                         if (prev.status !== "loading") return prev;
-                        return { ...prev, progressA: info, profileA: info.profile ?? prev.profileA } as CompareState & {
+                        return { ...prev, progressA: info } as CompareState & {
                             status: "loading";
                         };
                     });
-                }),
+                }, profileA),
                 fetchNetworkData(handleB, (info) => {
                     setState((prev) => {
                         if (prev.status !== "loading") return prev;
-                        return { ...prev, progressB: info, profileB: info.profile ?? prev.profileB } as CompareState & {
+                        return { ...prev, progressB: info } as CompareState & {
                             status: "loading";
                         };
                     });
-                }),
+                }, profileB),
             ]);
 
             setState({ status: "enriching", profileA: dataA.profile, profileB: dataB.profile });
@@ -306,6 +321,22 @@ const Page: Component = () => {
                 </Match>
                 <Match when={state().status === "error"}>
                     <p class="error">Error: {(state() as CompareState & { status: "error"; }).error}</p>
+                </Match>
+                <Match when={state().status === "self-compare"}>
+                    {(() => {
+                        const s = state() as CompareState & { status: "self-compare"; };
+                        return (
+                            <>
+                                <div class="profiles-row">
+                                    <ProfileCard profile={s.profile} />
+                                    <ProfileCard profile={s.profile} />
+                                </div>
+                                <div class="loading">
+                                    <p>That's the same person. 100% overlap. Shocking. 🎉</p>
+                                </div>
+                            </>
+                        );
+                    })()}
                 </Match>
                 <Match when={state().status === "done"}>
                     {(() => {
