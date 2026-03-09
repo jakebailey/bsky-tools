@@ -4,6 +4,8 @@ import "./App.css";
 
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createResource, For, Match, Show, Switch } from "solid-js";
+import { RichText } from "../../shared/RichText";
+import { cleanHandle, profilePrefix } from "../../shared/bsky";
 import { getBlueskyListPurpose, getClearskyLists, getProfile, getProfiles, type ProfileViewDetailed } from "./apis";
 
 async function doWork(queryHandle: string) {
@@ -50,8 +52,6 @@ async function doWork(queryHandle: string) {
     return { profile, lists };
 }
 
-const profilePrefix = "https://bsky.app/profile/";
-
 const Page: Component = () => {
     const navigate = useNavigate();
     const params = useParams<{ handle?: string | undefined; }>();
@@ -63,18 +63,7 @@ const Page: Component = () => {
             <form
                 onSubmit={(e) => {
                     e.preventDefault();
-                    let value = (e.target as HTMLFormElement).handle.value;
-                    value = value.trim();
-                    if (value.startsWith(profilePrefix)) {
-                        value = value.slice(profilePrefix.length);
-                        value = value.split("/")[0];
-                    }
-                    if (value.startsWith("@")) {
-                        value = value.slice(1);
-                    }
-                    if (value.startsWith("at://")) {
-                        value = value.slice("at://".length);
-                    }
+                    const value = cleanHandle((e.target as HTMLFormElement).handle.value);
                     navigate(`/${encodeURIComponent(value)}`);
                 }}
             >
@@ -91,14 +80,29 @@ const Page: Component = () => {
             <Show when={params.handle}>
                 <blockquote>
                     <p>
+                        <Show when={info.state === "ready" && info()!.profile.avatar}>
+                            <img
+                                src={info()!.profile.avatar!}
+                                alt=""
+                                style={{
+                                    width: "24px",
+                                    height: "24px",
+                                    "border-radius": "50%",
+                                    "vertical-align": "middle",
+                                    "margin-right": "6px",
+                                }}
+                            />
+                        </Show>
                         <a href={`${profilePrefix}${params.handle}`}>{params.handle}</a>
                         <Show when={info.state === "ready"}>
                             {" "}
                             ({info()!.profile.displayName})
                         </Show>
                     </p>
-                    <Show when={info.state === "ready"}>
-                        <p>{info()!.profile.description}</p>
+                    <Show when={info.state === "ready" && info()!.profile.description}>
+                        <p>
+                            <RichText text={info()!.profile.description!} />
+                        </p>
                     </Show>
                 </blockquote>
             </Show>
@@ -117,6 +121,19 @@ const Page: Component = () => {
                             {(list) => (
                                 <li>
                                     <p>
+                                        <Show when={list.profile.avatar}>
+                                            <img
+                                                src={list.profile.avatar!}
+                                                alt=""
+                                                style={{
+                                                    width: "20px",
+                                                    height: "20px",
+                                                    "border-radius": "50%",
+                                                    "vertical-align": "middle",
+                                                    "margin-right": "4px",
+                                                }}
+                                            />
+                                        </Show>
                                         <a href={list.list.url}>{list.list.name}</a> by{" "}
                                         <a href={`${profilePrefix}${list.profile.handle}`}>
                                             {list.profile.handle}
@@ -124,7 +141,9 @@ const Page: Component = () => {
                                         ({list.profile.followersCount} followers)
                                     </p>
                                     <Show when={list.list.description}>
-                                        <p>{list.list.description}</p>
+                                        <p>
+                                            <RichText text={list.list.description!} />
+                                        </p>
                                     </Show>
                                 </li>
                             )}

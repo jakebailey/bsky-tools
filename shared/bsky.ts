@@ -19,11 +19,28 @@ export function chunked<A>(array: A[], size: number): A[][] {
     return result;
 }
 
-export async function getProfile(handle: string): Promise<ProfileViewDetailed> {
-    if (!isActorIdentifier(handle)) {
-        throw new Error(`Invalid handle: ${handle}`);
+export const profilePrefix = "https://bsky.app/profile/";
+
+export function cleanHandle(value: string): ActorIdentifier {
+    value = value.trim().toLowerCase();
+    if (value.startsWith(profilePrefix)) {
+        value = value.slice(profilePrefix.length).split("/")[0];
     }
-    return ok(rpc.get("app.bsky.actor.getProfile", { params: { actor: handle } }));
+    if (value.startsWith("@")) {
+        value = value.slice(1);
+    }
+    if (value.startsWith("at://")) {
+        value = value.slice("at://".length);
+    }
+    if (!isActorIdentifier(value)) {
+        throw new Error(`Invalid handle: ${value}`);
+    }
+    return value;
+}
+
+export async function getProfile(handle: string): Promise<ProfileViewDetailed> {
+    const actor = cleanHandle(handle);
+    return ok(rpc.get("app.bsky.actor.getProfile", { params: { actor } }));
 }
 
 export async function getProfiles(actors: ActorIdentifier[]): Promise<Map<string, ProfileViewDetailed>> {

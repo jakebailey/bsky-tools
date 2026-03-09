@@ -2,10 +2,11 @@ import "water.css/out/dark.min.css";
 import "../../shared.css";
 import "./App.css";
 
-import { tokenize } from "@atcute/bluesky-richtext-parser";
 import { isActorIdentifier } from "@atcute/lexicons/syntax";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createSignal, For, type JSX, Match, Show, Switch } from "solid-js";
+import { cleanHandle, profilePrefix } from "../../shared/bsky";
+import { RichText } from "../../shared/RichText";
 import {
     type ActorIdentifier,
     computeOverlap,
@@ -15,67 +16,6 @@ import {
     type ProfileViewDetailed,
     type ProgressInfo,
 } from "./apis";
-
-const profilePrefix = "https://bsky.app/profile/";
-
-// Ported from the official Bluesky app's RichText.tsx for bare URL detection
-const URL_RE = /(^|\s|\()((https?:\/\/[\S]+)|((?<domain>[a-z][a-z0-9]*(\.[a-z0-9]+)+)[\S]*))/gi;
-
-function renderTextWithLinks(text: string): JSX.Element {
-    const parts: JSX.Element[] = [];
-    let lastIndex = 0;
-    for (const match of text.matchAll(URL_RE)) {
-        const fullMatch = match[2];
-        const idx = match.index! + match[1].length;
-        if (idx > lastIndex) {
-            parts.push(text.slice(lastIndex, idx));
-        }
-        const href = fullMatch.startsWith("http") ? fullMatch : `https://${fullMatch}`;
-        parts.push(<a href={href}>{fullMatch}</a>);
-        lastIndex = idx + fullMatch.length;
-    }
-    if (lastIndex < text.length) {
-        parts.push(text.slice(lastIndex));
-    }
-    return <>{parts}</>;
-}
-
-const RichText: Component<{ text: string; }> = (props) => {
-    const tokens = () => tokenize(props.text);
-    return (
-        <>
-            <For each={tokens()}>
-                {(token) => {
-                    switch (token.type) {
-                        case "mention":
-                            return <a href={`${profilePrefix}${token.handle}`}>@{token.handle}</a>;
-                        case "autolink":
-                            return <a href={token.url}>{token.raw}</a>;
-                        default:
-                            return renderTextWithLinks("content" in token ? token.content : token.raw);
-                    }
-                }}
-            </For>
-        </>
-    );
-};
-
-function cleanHandle(value: string): ActorIdentifier {
-    value = value.trim().toLowerCase();
-    if (value.startsWith(profilePrefix)) {
-        value = value.slice(profilePrefix.length).split("/")[0];
-    }
-    if (value.startsWith("@")) {
-        value = value.slice(1);
-    }
-    if (value.startsWith("at://")) {
-        value = value.slice("at://".length);
-    }
-    if (!isActorIdentifier(value)) {
-        throw new Error(`Invalid handle: ${value}`);
-    }
-    return value;
-}
 
 const ProfileCard: Component<{ profile: ProfileViewDetailed; }> = (props) => (
     <blockquote>
@@ -258,15 +198,18 @@ const Page: Component = () => {
         }
     };
 
-    // Normalize URL casing if needed
+    // Normalize URL casing and auto-start if both handles are present
     {
         const a = params.handleA;
         const b = params.handleB;
         if (a && b) {
-            const actorA = decodeURIComponent(a).toLowerCase();
-            const actorB = decodeURIComponent(b).toLowerCase();
+            const actorA = cleanHandle(decodeURIComponent(a));
+            const actorB = cleanHandle(decodeURIComponent(b));
             if (actorA !== decodeURIComponent(a) || actorB !== decodeURIComponent(b)) {
                 navigate(`/${encodeURIComponent(actorA)}/${encodeURIComponent(actorB)}`, { replace: true });
+            }
+            if (state().status === "idle") {
+                doCompare(actorA, actorB);
             }
         }
     }
@@ -299,7 +242,7 @@ const Page: Component = () => {
                         id="handleA"
                         name="handleA"
                         type="text"
-                        placeholder="First handle or profile link"
+                        placeholder="First handle, DID, or profile link"
                         value={decodeURIComponent(params.handleA || "")}
                         autofocus
                     />
@@ -308,7 +251,7 @@ const Page: Component = () => {
                         id="handleB"
                         name="handleB"
                         type="text"
-                        placeholder="Second handle or profile link"
+                        placeholder="Second handle, DID, or profile link"
                         value={decodeURIComponent(params.handleB || "")}
                     />
                     <button type="submit">Compare</button>
