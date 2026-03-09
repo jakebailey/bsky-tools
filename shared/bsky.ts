@@ -43,6 +43,12 @@ export async function getProfile(handle: string): Promise<ProfileViewDetailed> {
     return ok(rpc.get("app.bsky.actor.getProfile", { params: { actor } }));
 }
 
+export const isEngagementHacker = (profile: ProfileViewDetailed) => {
+    const follows = profile.followsCount ?? 0;
+    const followers = profile.followersCount ?? 0;
+    return follows > 10_000 && followers > 0 && follows / followers > 3;
+};
+
 export async function getProfiles(actors: ActorIdentifier[]): Promise<Map<string, ProfileViewDetailed>> {
     const map = new Map<string, ProfileViewDetailed>();
     const chunks = chunked(actors, 25);

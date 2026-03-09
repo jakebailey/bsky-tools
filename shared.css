@@ -72,6 +72,23 @@ html > body {
     font-size: 0.85em;
 }
 
+.engagement-hacker {
+    opacity: 0.4;
+}
+
+.hacker-badge {
+    font-size: 0.85em;
+    cursor: help;
+}
+
+.dim-toggle {
+    display: block;
+    margin: 12px 0;
+    font-size: 0.9em;
+    opacity: 0.7;
+    cursor: pointer;
+}
+
 .description {
     font-size: 0.9em;
     opacity: 0.8;

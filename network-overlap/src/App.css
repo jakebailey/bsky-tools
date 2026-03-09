@@ -76,23 +76,6 @@ h1 {
     margin-top: 0;
 }
 
-.engagement-hacker {
-    opacity: 0.4;
-}
-
-.hacker-badge {
-    font-size: 0.85em;
-    cursor: help;
-}
-
-.dim-toggle {
-    display: block;
-    margin: 12px 0;
-    font-size: 0.9em;
-    opacity: 0.7;
-    cursor: pointer;
-}
-
 .loading {
     text-align: center;
     padding: 24px 0;

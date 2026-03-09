@@ -2,9 +2,10 @@ import "water.css/out/dark.min.css";
 import "../../shared.css";
 import "./App.css";
 
+import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
-import { type Component, createResource, For, Match, Show, Switch } from "solid-js";
-import { cleanHandle, profilePrefix } from "../../shared/bsky";
+import { type Component, createResource, createSignal, For, Match, Show, Switch } from "solid-js";
+import { cleanHandle, isEngagementHacker, profilePrefix } from "../../shared/bsky";
 import { ProfileCard } from "../../shared/ProfileCard";
 import { RichText } from "../../shared/RichText";
 import { getBlueskyListPurpose, getClearskyLists, getProfile, getProfiles, type ProfileViewDetailed } from "./apis";
@@ -57,6 +58,7 @@ const Page: Component = () => {
     const navigate = useNavigate();
     const params = useParams<{ handle?: string | undefined; }>();
     const [info] = createResource(() => params.handle || undefined, doWork);
+    const [dimHackers, setDimHackers] = makePersisted(createSignal(true), { name: "dimHackers" });
     return (
         <div>
             <a href=".." class="back-link" rel="external">← Bluesky Tools</a>
@@ -91,11 +93,24 @@ const Page: Component = () => {
                     <span>Error: {`${info.error}`}</span>
                 </Match>
                 <Match when={info()}>
+                    <label class="dim-toggle">
+                        <input
+                            type="checkbox"
+                            checked={dimHackers()}
+                            onChange={(e) => setDimHackers(e.currentTarget.checked)}
+                        />{" "}
+                        Dim suspected engagement hackers
+                    </label>
                     <p>{info()!.lists.length} moderation lists</p>
                     <ul class="profile-list">
                         <For each={info()!.lists}>
                             {(list) => (
-                                <li class="profile-item">
+                                <li
+                                    class="profile-item"
+                                    classList={{
+                                        "engagement-hacker": dimHackers() && isEngagementHacker(list.profile),
+                                    }}
+                                >
                                     <Show when={list.profile.avatar}>
                                         <img
                                             src={list.profile.avatar!}
@@ -111,6 +126,15 @@ const Page: Component = () => {
                                         <span class="follower-count">
                                             ({list.profile.followersCount} followers)
                                         </span>
+                                        <Show when={isEngagementHacker(list.profile)}>
+                                            {" "}
+                                            <span
+                                                class="hacker-badge"
+                                                title="Suspected engagement hacker (following 10k+ with high follow ratio)"
+                                            >
+                                                ⚠️
+                                            </span>
+                                        </Show>
                                         <Show when={list.list.description}>
                                             <p>
                                                 <RichText text={list.list.description!} />

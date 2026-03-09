@@ -5,7 +5,7 @@ import "./App.css";
 import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createSignal, For, Match, Show, Switch } from "solid-js";
-import { cleanHandle, profilePrefix } from "../../shared/bsky";
+import { cleanHandle, isEngagementHacker, profilePrefix } from "../../shared/bsky";
 import { ProfileCard } from "../../shared/ProfileCard";
 import {
     type ActorIdentifier,
@@ -16,12 +16,6 @@ import {
     type ProfileViewDetailed,
     type ProgressInfo,
 } from "./apis";
-
-const isEngagementHacker = (profile: ProfileViewDetailed) => {
-    const follows = profile.followsCount ?? 0;
-    const followers = profile.followersCount ?? 0;
-    return follows > 10_000 && followers > 0 && follows / followers > 3;
-};
 
 const ProfileListItem: Component<{ profile: ProfileViewDetailed; dimHackers: boolean; }> = (props) => (
     <li class="profile-item" classList={{ "engagement-hacker": props.dimHackers && isEngagementHacker(props.profile) }}>
