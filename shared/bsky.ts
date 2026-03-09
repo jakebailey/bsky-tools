@@ -1,6 +1,5 @@
-import { Client, ok, simpleFetchHandler } from "@atcute/client";
-import type {} from "@atcute/bluesky";
 import type { AppBskyActorDefs } from "@atcute/bluesky";
+import { Client, ok, simpleFetchHandler } from "@atcute/client";
 import { isActorIdentifier } from "@atcute/lexicons/syntax";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 
