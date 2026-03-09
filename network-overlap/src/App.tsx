@@ -2,10 +2,9 @@ import "water.css/out/dark.min.css";
 import "../../shared.css";
 import "./App.css";
 
-import { isActorIdentifier } from "@atcute/lexicons/syntax";
 import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
-import { type Component, createSignal, For, type JSX, Match, Show, Switch } from "solid-js";
+import { type Component, createSignal, For, Match, Show, Switch } from "solid-js";
 import { cleanHandle, profilePrefix } from "../../shared/bsky";
 import { RichText } from "../../shared/RichText";
 import {
