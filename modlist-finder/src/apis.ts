@@ -1,15 +1,10 @@
-import { Client, ok, simpleFetchHandler } from "@atcute/client";
-import type {} from "@atcute/bluesky";
-import type { AppBskyActorDefs } from "@atcute/bluesky";
+import { ok } from "@atcute/client";
 import type { Did } from "@atcute/lexicons/syntax";
-import { isActorIdentifier, isDid } from "@atcute/lexicons/syntax";
+import { isDid } from "@atcute/lexicons/syntax";
 import * as v from "valibot";
+import { rpc } from "../../shared/bsky";
 
-export type ProfileViewDetailed = AppBskyActorDefs.ProfileViewDetailed;
-
-const rpc = new Client({
-    handler: simpleFetchHandler({ service: "https://public.api.bsky.app" }),
-});
+export { getProfile, getProfiles, type ProfileViewDetailed } from "../../shared/bsky";
 
 // Simple rate limiter for Clearsky API (5 requests per second)
 // https://github.com/ClearskyApp06/clearskyservices/blob/main/api.md#rate-limiting
@@ -77,31 +72,4 @@ export async function getBlueskyListPurpose(did: Did, url: string): Promise<stri
     const at = `at://${did}/app.bsky.graph.list/${id}` as const;
     const res = await ok(rpc.get("app.bsky.graph.getList", { params: { list: at, limit: 1 } }));
     return res.list.purpose;
-}
-
-export async function getBlueskyProfile(handle: string): Promise<ProfileViewDetailed> {
-    if (!isActorIdentifier(handle)) {
-        throw new Error(`Invalid handle: ${handle}`);
-    }
-    return ok(rpc.get("app.bsky.actor.getProfile", { params: { actor: handle } }));
-}
-
-function chunked<A>(array: A[], size: number): A[][] {
-    const result = [];
-    for (let i = 0; i < array.length; i += size) {
-        result.push(array.slice(i, i + size));
-    }
-    return result;
-}
-
-export async function getBlueskyProfiles(dids: Did[]): Promise<Map<string, ProfileViewDetailed>> {
-    const map = new Map<string, ProfileViewDetailed>();
-    for (const chunk of chunked(dids, 25)) {
-        const res = await ok(rpc.get("app.bsky.actor.getProfiles", { params: { actors: chunk } }));
-        for (const profile of res.profiles) {
-            map.set(profile.handle, profile);
-            map.set(profile.did, profile);
-        }
-    }
-    return map;
 }

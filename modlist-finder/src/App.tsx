@@ -4,16 +4,10 @@ import "./App.css";
 
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createResource, For, Match, Show, Switch } from "solid-js";
-import {
-    getBlueskyListPurpose,
-    getBlueskyProfile,
-    getBlueskyProfiles,
-    getClearskyLists,
-    type ProfileViewDetailed,
-} from "./apis";
+import { getBlueskyListPurpose, getClearskyLists, getProfile, getProfiles, type ProfileViewDetailed } from "./apis";
 
 async function doWork(queryHandle: string) {
-    const profile = await getBlueskyProfile(queryHandle);
+    const profile = await getProfile(queryHandle);
     const clearskyLists = await getClearskyLists(queryHandle);
 
     // Fetch list purposes concurrently, ignoring failures
@@ -32,7 +26,7 @@ async function doWork(queryHandle: string) {
 
     let profiles: Map<string, ProfileViewDetailed> | undefined;
     try {
-        profiles = await getBlueskyProfiles(modClearskyLists.map((list) => list.did));
+        profiles = await getProfiles(modClearskyLists.map((list) => list.did));
     } catch {
         // ignore
     }

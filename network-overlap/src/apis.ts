@@ -1,42 +1,8 @@
-import { Client, ok, simpleFetchHandler } from "@atcute/client";
-import type {} from "@atcute/bluesky";
-import type { AppBskyActorDefs } from "@atcute/bluesky";
-export type { ActorIdentifier } from "@atcute/lexicons/syntax";
+import { ok } from "@atcute/client";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
+import { getProfile, getProfiles, type ProfileView, type ProfileViewDetailed, rpc } from "../../shared/bsky";
 
-export type ProfileView = AppBskyActorDefs.ProfileView;
-export type ProfileViewDetailed = AppBskyActorDefs.ProfileViewDetailed;
-
-const rpc = new Client({
-    handler: simpleFetchHandler({ service: "https://public.api.bsky.app" }),
-});
-
-export const getProfile = async (actor: ActorIdentifier): Promise<ProfileViewDetailed> => {
-    return ok(rpc.get("app.bsky.actor.getProfile", { params: { actor } }));
-};
-
-function chunked<A>(array: A[], size: number): A[][] {
-    const result = [];
-    for (let i = 0; i < array.length; i += size) {
-        result.push(array.slice(i, i + size));
-    }
-    return result;
-}
-
-export const getProfiles = async (actors: ActorIdentifier[]): Promise<Map<string, ProfileViewDetailed>> => {
-    const map = new Map<string, ProfileViewDetailed>();
-    const chunks = chunked(actors, 25);
-    // Fetch all chunks in parallel
-    const results = await Promise.all(
-        chunks.map((chunk) => ok(rpc.get("app.bsky.actor.getProfiles", { params: { actors: chunk } }))),
-    );
-    for (const { profiles } of results) {
-        for (const profile of profiles) {
-            map.set(profile.did, profile);
-        }
-    }
-    return map;
-};
+export { type ActorIdentifier, getProfiles, type ProfileView, type ProfileViewDetailed } from "../../shared/bsky";
 
 export interface ProgressInfo {
     phase: string;
