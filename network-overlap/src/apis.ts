@@ -10,17 +10,19 @@ export interface ProgressInfo {
     follows?: number;
 }
 
-export const getAllFollowers = async (
+const paginate = async (
+    endpoint: "app.bsky.graph.getFollowers" | "app.bsky.graph.getFollows",
     actor: ActorIdentifier,
     onProgress?: (info: { current: number; }) => void,
 ): Promise<Map<string, ProfileView>> => {
     const all = new Map<string, ProfileView>();
     let cursor: string | undefined;
     do {
-        const res = await ok(rpc.get("app.bsky.graph.getFollowers", {
+        const res = await ok(rpc.get(endpoint, {
             params: { actor, limit: 100, cursor },
         }));
-        for (const f of res.followers) {
+        const profiles = "followers" in res ? res.followers : res.follows;
+        for (const f of profiles) {
             all.set(f.did, f);
         }
         cursor = res.cursor;
@@ -29,24 +31,11 @@ export const getAllFollowers = async (
     return all;
 };
 
-export const getAllFollows = async (
-    actor: ActorIdentifier,
-    onProgress?: (info: { current: number; }) => void,
-): Promise<Map<string, ProfileView>> => {
-    const all = new Map<string, ProfileView>();
-    let cursor: string | undefined;
-    do {
-        const res = await ok(rpc.get("app.bsky.graph.getFollows", {
-            params: { actor, limit: 100, cursor },
-        }));
-        for (const f of res.follows) {
-            all.set(f.did, f);
-        }
-        cursor = res.cursor;
-        onProgress?.({ current: all.size });
-    } while (cursor);
-    return all;
-};
+export const getAllFollowers = (actor: ActorIdentifier, onProgress?: (info: { current: number; }) => void) =>
+    paginate("app.bsky.graph.getFollowers", actor, onProgress);
+
+export const getAllFollows = (actor: ActorIdentifier, onProgress?: (info: { current: number; }) => void) =>
+    paginate("app.bsky.graph.getFollows", actor, onProgress);
 
 export interface NetworkData {
     profile: ProfileViewDetailed;
