@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@atcute/bluesky':
-        specifier: ^3.2.20
-        version: 3.2.20
+        specifier: ^3.2.21
+        version: 3.2.21
       '@atcute/bluesky-richtext-parser':
         specifier: ^2.1.1
         version: 2.1.1
@@ -30,7 +30,7 @@ importers:
         specifier: ^1.9.11
         version: 1.9.11
       valibot:
-        specifier: ^1.0.0
+        specifier: ^1.2.0
         version: 1.2.0(typescript@5.9.3)
       water.css:
         specifier: ^2.1.1
@@ -54,8 +54,8 @@ packages:
   '@atcute/bluesky-richtext-parser@2.1.1':
     resolution: {integrity: sha512-2CJiZ1oLAxQEz6BL5r1m/p+m89bb02959dFEvMvYI7CbHgIzbZsDOp3JB2XVu49DjPNtd9Mz5VnF5OBBpTgWdg==}
 
-  '@atcute/bluesky@3.2.20':
-    resolution: {integrity: sha512-N+o7K31ptnHSFoYKOHfQYJHFqU7CgGbCX8lDeWvpQuwkEMTEPojrQXIQD/+FL+FVEvRV/84LNi9cEnhPKShE5w==}
+  '@atcute/bluesky@3.2.21':
+    resolution: {integrity: sha512-xmqtPmm5HUzaPl6emR9K4qKrfx7Aiog1mM5lWqvsvmclMO7Vn+oJzCYrwDQ59KzhuRAIsP8BW3bW7U9Hd+sFQA==}
 
   '@atcute/client@4.2.1':
     resolution: {integrity: sha512-ZBFM2pW075JtgGFu5g7HHZBecrClhlcNH8GVP9Zz1aViWR+cjjBsTpeE63rJs+FCOHFYlirUyo5L8SGZ4kMINw==}
@@ -767,7 +767,7 @@ snapshots:
 
   '@atcute/bluesky-richtext-parser@2.1.1': {}
 
-  '@atcute/bluesky@3.2.20':
+  '@atcute/bluesky@3.2.21':
     dependencies:
       '@atcute/atproto': 3.1.10
       '@atcute/lexicons': 1.2.9
