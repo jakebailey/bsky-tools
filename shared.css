@@ -100,3 +100,25 @@ html > body {
     font-size: 0.85em;
     opacity: 0.6;
 }
+
+.loading {
+    text-align: center;
+    padding: 24px 0;
+}
+
+.progress {
+    font-family: monospace;
+    font-size: 0.9em;
+    opacity: 0.7;
+    margin: 4px 0;
+}
+
+.note {
+    opacity: 0.5;
+    font-size: 0.85em;
+    margin-top: 12px;
+}
+
+.error {
+    color: #ff6b6b;
+}

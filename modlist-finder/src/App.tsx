@@ -4,7 +4,7 @@ import "./App.css";
 
 import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
-import { type Component, createEffect, createResource, createSignal, For, Match, Show, Switch } from "solid-js";
+import { type Component, createSignal, For, Match, Show, Switch } from "solid-js";
 import { isEngagementHacker, profilePrefix } from "../../shared/bsky";
 import { ProfileCard } from "../../shared/ProfileCard";
 import { RichText } from "../../shared/RichText";
@@ -22,10 +22,16 @@ interface ListEntry {
     list: ClearskyList;
 }
 
-async function processLists(clearskyLists: ClearskyList[]): Promise<ListEntry[]> {
+async function processLists(
+    clearskyLists: ClearskyList[],
+    onProgress?: (checked: number, total: number) => void,
+): Promise<ListEntry[]> {
+    let checked = 0;
     const results = await Promise.allSettled(
         clearskyLists.map(async (list) => {
             const purpose = await getBlueskyListPurpose(list.did, list.url);
+            checked++;
+            onProgress?.(checked, clearskyLists.length);
             return { list, purpose };
         }),
     );
@@ -59,52 +65,82 @@ async function processLists(clearskyLists: ClearskyList[]): Promise<ListEntry[]>
     return lists;
 }
 
-async function doWork(queryHandle: string) {
+async function doWork(
+    queryHandle: string,
+    onProgress: (msg: string, profile?: ProfileViewDetailed) => void,
+) {
+    onProgress("Resolving profile...");
     const profile = await getProfile(queryHandle);
+    onProgress("Fetching lists from Clearsky...", profile);
     const clearskyResult = await getClearskyLists(queryHandle);
-    const lists = await processLists(clearskyResult.lists);
+    onProgress(`Checking ${clearskyResult.lists.length} lists...`, profile);
+    const lists = await processLists(clearskyResult.lists, (checked, total) => {
+        onProgress(`Checking lists... ${checked}/${total}`, profile);
+    });
+    onProgress("Fetching list creator profiles...", profile);
 
     lists.sort((a, b) => (b.profile.followersCount ?? 0) - (a.profile.followersCount ?? 0));
 
     return { profile, lists, hasMore: clearskyResult.hasMore, nextPage: clearskyResult.nextPage };
 }
 
+type PageState =
+    | { status: "idle"; }
+    | { status: "loading"; progress: string; profile?: ProfileViewDetailed; }
+    | { status: "done"; profile: ProfileViewDetailed; lists: ListEntry[]; hasMore: boolean; nextPage: number; }
+    | { status: "error"; error: string; };
+
 const Page: Component = () => {
     const navigate = useNavigate();
     const params = useParams<{ handle?: string | undefined; }>();
-    const [info] = createResource(() => params.handle || undefined, doWork);
+    const [state, setState] = createSignal<PageState>({ status: "idle" });
     const [dimHackers, setDimHackers] = makePersisted(createSignal(true), { name: "dimHackers" });
     const [extraLists, setExtraLists] = createSignal<ListEntry[]>([]);
-    const [hasMore, setHasMore] = createSignal(false);
-    const [nextPage, setNextPage] = createSignal(0);
     const [loadingMore, setLoadingMore] = createSignal(false);
 
     const allLists = () => {
-        const base = info()?.lists ?? [];
+        const s = state();
+        const base = s.status === "done" ? s.lists : [];
         return [...base, ...extraLists()];
     };
 
-    // Reset extra lists and sync hasMore when resource resolves
-    createEffect(() => {
-        const data = info();
-        if (data) {
-            setExtraLists([]);
-            setHasMore(data.hasMore);
-            setNextPage(data.nextPage);
+    const doSearch = async (handle: string) => {
+        setState({ status: "loading", progress: "Resolving profile..." });
+        setExtraLists([]);
+        try {
+            const result = await doWork(handle, (msg, profile) => {
+                setState({ status: "loading", progress: msg, profile });
+            });
+            setState({
+                status: "done",
+                profile: result.profile,
+                lists: result.lists,
+                hasMore: result.hasMore,
+                nextPage: result.nextPage,
+            });
+        } catch (e) {
+            setState({ status: "error", error: String(e) });
         }
-    });
+    };
+
+    // Auto-start if handle is in the URL
+    {
+        const handle = params.handle;
+        if (handle && state().status === "idle") {
+            doSearch(decodeURIComponent(handle));
+        }
+    }
 
     const loadMore = async () => {
-        const handle = params.handle;
-        if (!handle || loadingMore()) return;
+        const s = state();
+        if (s.status !== "done" || loadingMore()) return;
         setLoadingMore(true);
         try {
-            const result = await getClearskyLists(decodeURIComponent(handle), nextPage());
+            const result = await getClearskyLists(decodeURIComponent(params.handle!), s.nextPage);
             const newLists = await processLists(result.lists);
             newLists.sort((a, b) => (b.profile.followersCount ?? 0) - (a.profile.followersCount ?? 0));
             setExtraLists((prev) => [...prev, ...newLists]);
-            setHasMore(result.hasMore);
-            setNextPage(result.nextPage);
+            setState({ ...s, hasMore: result.hasMore, nextPage: result.nextPage });
         } finally {
             setLoadingMore(false);
         }
@@ -120,6 +156,7 @@ const Page: Component = () => {
                     const value = (e.target as HTMLFormElement).handle.value.trim();
                     if (!value) return;
                     navigate(`/${encodeURIComponent(value)}`);
+                    doSearch(value);
                 }}
             >
                 <input
@@ -133,18 +170,33 @@ const Page: Component = () => {
                 <button type="submit">Search</button>
             </form>
 
-            <Show when={info.state === "ready"}>
-                <ProfileCard profile={info()!.profile} />
+            <Show
+                when={(() => {
+                    const s = state();
+                    return s.status === "loading" && s.profile
+                        ? s.profile
+                        : s.status === "done"
+                        ? s.profile
+                        : undefined;
+                })()}
+            >
+                {(profile) => <ProfileCard profile={profile()} />}
             </Show>
 
             <Switch>
-                <Match when={info.loading}>
-                    <p>Loading...</p>
+                <Match when={state().status === "loading"}>
+                    <div class="loading">
+                        <p class="progress">
+                            {(state() as PageState & { status: "loading" }).progress}
+                        </p>
+                    </div>
                 </Match>
-                <Match when={info.error}>
-                    <span>Error: {`${info.error}`}</span>
+                <Match when={state().status === "error"}>
+                    <p class="error">
+                        Error: {(state() as PageState & { status: "error" }).error}
+                    </p>
                 </Match>
-                <Match when={info()}>
+                <Match when={state().status === "done"}>
                     <label class="dim-toggle">
                         <input
                             type="checkbox"
@@ -197,7 +249,12 @@ const Page: Component = () => {
                             )}
                         </For>
                     </ul>
-                    <Show when={hasMore()}>
+                    <Show
+                        when={(() => {
+                            const s = state();
+                            return s.status === "done" && s.hasMore;
+                        })()}
+                    >
                         <button onClick={loadMore} disabled={loadingMore()}>
                             {loadingMore() ? "Loading..." : "Show more lists"}
                         </button>
