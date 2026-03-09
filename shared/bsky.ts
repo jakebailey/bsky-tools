@@ -46,7 +46,8 @@ export async function getProfile(handle: string, signal?: AbortSignal): Promise<
 export const isEngagementHacker = (profile: ProfileViewDetailed) => {
     const follows = profile.followsCount ?? 0;
     const followers = profile.followersCount ?? 0;
-    return follows > 10_000 && followers > 0 && follows / followers > 3;
+    if (follows > 10_000) return true;
+    return follows > 2_000 && followers > 0 && follows / followers > 3;
 };
 
 export async function mapConcurrent<T, R>(items: T[], concurrency: number, fn: (item: T) => Promise<R>): Promise<R[]> {
