@@ -32,6 +32,7 @@ export const HandleInput: Component<{
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
     let abortController: AbortController | undefined;
     let inputRef!: HTMLInputElement;
+    let justSelected = false;
 
     onCleanup(() => {
         clearTimeout(debounceTimer);
@@ -41,6 +42,11 @@ export const HandleInput: Component<{
     const doSearch = (value: string) => {
         clearTimeout(debounceTimer);
         abortController?.abort();
+
+        if (justSelected) {
+            justSelected = false;
+            return;
+        }
 
         // Don't search for DIDs or profile URLs
         const trimmed = value.trim();
@@ -56,8 +62,11 @@ export const HandleInput: Component<{
             try {
                 const results = await searchTypeahead(trimmed.replace(/^@/, ""), controller.signal);
                 if (!controller.signal.aborted) {
-                    setSuggestions(results);
-                    setShowDropdown(results.length > 0);
+                    // Filter out exact matches
+                    const normalized = trimmed.replace(/^@/, "").toLowerCase();
+                    const filtered = results.filter((a) => a.handle.toLowerCase() !== normalized);
+                    setSuggestions(filtered);
+                    setShowDropdown(filtered.length > 0);
                     setSelectedIndex(-1);
                 }
             } catch {
@@ -66,16 +75,24 @@ export const HandleInput: Component<{
                     setShowDropdown(false);
                 }
             }
-        }, 200);
+        }, 80);
     };
 
     const selectSuggestion = (actor: ProfileViewBasic) => {
+        justSelected = true;
         setQuery(actor.handle);
         setSuggestions([]);
         setShowDropdown(false);
         inputRef.value = actor.handle;
-        // Dispatch input event so forms can react
         inputRef.dispatchEvent(new Event("input", { bubbles: true }));
+        // Auto-submit if all handle inputs in the form have values
+        const form = inputRef.closest("form");
+        if (form) {
+            const inputs = form.querySelectorAll<HTMLInputElement>(".handle-input-wrapper input");
+            if ([...inputs].every((input) => input.value.trim())) {
+                form.requestSubmit();
+            }
+        }
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -94,6 +111,11 @@ export const HandleInput: Component<{
         } else if (e.key === "Escape") {
             setShowDropdown(false);
         }
+    };
+
+    const handleSelect = (e: MouseEvent | TouchEvent, actor: ProfileViewBasic) => {
+        e.preventDefault();
+        selectSuggestion(actor);
     };
 
     return (
@@ -117,8 +139,8 @@ export const HandleInput: Component<{
                     if (suggestions().length > 0) setShowDropdown(true);
                 }}
                 onBlur={() => {
-                    // Delay to allow click on suggestion
-                    setTimeout(() => setShowDropdown(false), 150);
+                    // Delay to allow click/tap on suggestion
+                    setTimeout(() => setShowDropdown(false), 300);
                 }}
             />
             <Show when={showDropdown() && suggestions().length > 0}>
@@ -129,10 +151,8 @@ export const HandleInput: Component<{
                                 role="option"
                                 aria-selected={i() === selectedIndex()}
                                 classList={{ "suggestion-selected": i() === selectedIndex() }}
-                                onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    selectSuggestion(actor);
-                                }}
+                                onMouseDown={(e) => handleSelect(e, actor)}
+                                onTouchEnd={(e) => handleSelect(e, actor)}
                             >
                                 <Show when={actor.avatar}>
                                     <img src={actor.avatar!} alt="" class="suggestion-avatar" />
