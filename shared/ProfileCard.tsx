@@ -6,17 +6,19 @@ export const ProfileCard: Component<{ profile: ProfileViewDetailed; }> = (props)
     <blockquote>
         <p>
             <Show when={props.profile.avatar}>
-                <img
-                    src={props.profile.avatar!}
-                    alt=""
-                    style={{
-                        width: "24px",
-                        height: "24px",
-                        "border-radius": "50%",
-                        "vertical-align": "middle",
-                        "margin-right": "6px",
-                    }}
-                />
+                {(avatar) => (
+                    <img
+                        src={avatar()}
+                        alt=""
+                        style={{
+                            width: "24px",
+                            height: "24px",
+                            "border-radius": "50%",
+                            "vertical-align": "middle",
+                            "margin-right": "6px",
+                        }}
+                    />
+                )}
             </Show>
             <a href={`${profilePrefix}${props.profile.handle}`}>
                 {props.profile.displayName || props.profile.handle}
@@ -24,9 +26,11 @@ export const ProfileCard: Component<{ profile: ProfileViewDetailed; }> = (props)
             <span class="handle">@{props.profile.handle}</span>
         </p>
         <Show when={props.profile.description}>
-            <p class="description">
-                <RichText text={props.profile.description!} />
-            </p>
+            {(description) => (
+                <p class="description">
+                    <RichText text={description()} />
+                </p>
+            )}
         </Show>
         <p class="stats">
             <Show when={props.profile.followersCount != null}>

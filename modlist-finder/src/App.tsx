@@ -147,8 +147,13 @@ const Page: Component = () => {
         if (s.status !== "done" || loadingMore()) return;
         setLoadingMore(true);
         try {
-            const result = await getClearskyLists(decodeURIComponent(params.handle!), s.nextPage);
-            const newLists = await processLists(result.lists);
+            const result = await getClearskyLists(
+                decodeURIComponent(params.handle!),
+                s.nextPage,
+                3,
+                abortController?.signal,
+            );
+            const newLists = await processLists(result.lists, undefined, abortController?.signal);
             newLists.sort((a, b) => (b.profile.followersCount ?? 0) - (a.profile.followersCount ?? 0));
             setExtraLists((prev) => [...prev, ...newLists]);
             setState({ ...s, hasMore: result.hasMore, nextPage: result.nextPage });

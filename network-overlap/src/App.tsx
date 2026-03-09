@@ -71,6 +71,12 @@ const OverlapSection: Component<{
 }> = (props) => {
     const [expanded, setExpanded] = createSignal(!props.collapsed);
     const [showAll, setShowAll] = createSignal(false);
+
+    // Reset expanded state when collapsed prop changes
+    createEffect(() => {
+        setExpanded(!props.collapsed);
+    });
+
     const displayed = () => showAll() ? props.profiles : props.profiles.slice(0, 50);
     const pctSmaller = () => {
         const smaller = Math.min(props.countA, props.countB);
