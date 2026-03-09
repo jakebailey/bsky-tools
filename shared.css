@@ -30,3 +30,51 @@ html > body {
         max-width: 100%;
     }
 }
+
+.footer {
+    opacity: 0.5;
+    font-size: 0.85em;
+    text-align: center;
+    margin-top: 32px;
+}
+
+.profile-list {
+    list-style: none;
+    padding: 0;
+}
+
+.profile-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+}
+
+.avatar-small {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.handle {
+    opacity: 0.6;
+    font-size: 0.9em;
+}
+
+.follower-count {
+    opacity: 0.5;
+    font-size: 0.85em;
+}
+
+.description {
+    font-size: 0.9em;
+    opacity: 0.8;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
+.stats {
+    font-size: 0.85em;
+    opacity: 0.6;
+}

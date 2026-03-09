@@ -5,6 +5,7 @@ import "./App.css";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createResource, For, Match, Show, Switch } from "solid-js";
 import { cleanHandle, profilePrefix } from "../../shared/bsky";
+import { ProfileCard } from "../../shared/ProfileCard";
 import { RichText } from "../../shared/RichText";
 import { getBlueskyListPurpose, getClearskyLists, getProfile, getProfiles, type ProfileViewDetailed } from "./apis";
 
@@ -77,34 +78,8 @@ const Page: Component = () => {
                 <button type="submit">Search</button>
             </form>
 
-            <Show when={params.handle}>
-                <blockquote>
-                    <p>
-                        <Show when={info.state === "ready" && info()!.profile.avatar}>
-                            <img
-                                src={info()!.profile.avatar!}
-                                alt=""
-                                style={{
-                                    width: "24px",
-                                    height: "24px",
-                                    "border-radius": "50%",
-                                    "vertical-align": "middle",
-                                    "margin-right": "6px",
-                                }}
-                            />
-                        </Show>
-                        <a href={`${profilePrefix}${params.handle}`}>{params.handle}</a>
-                        <Show when={info.state === "ready"}>
-                            {" "}
-                            ({info()!.profile.displayName})
-                        </Show>
-                    </p>
-                    <Show when={info.state === "ready" && info()!.profile.description}>
-                        <p>
-                            <RichText text={info()!.profile.description!} />
-                        </p>
-                    </Show>
-                </blockquote>
+            <Show when={info.state === "ready"}>
+                <ProfileCard profile={info()!.profile} />
             </Show>
 
             <Switch>
@@ -116,35 +91,31 @@ const Page: Component = () => {
                 </Match>
                 <Match when={info()}>
                     <p>{info()!.lists.length} moderation lists</p>
-                    <ul>
+                    <ul class="profile-list">
                         <For each={info()!.lists}>
                             {(list) => (
-                                <li>
-                                    <p>
-                                        <Show when={list.profile.avatar}>
-                                            <img
-                                                src={list.profile.avatar!}
-                                                alt=""
-                                                style={{
-                                                    width: "20px",
-                                                    height: "20px",
-                                                    "border-radius": "50%",
-                                                    "vertical-align": "middle",
-                                                    "margin-right": "4px",
-                                                }}
-                                            />
-                                        </Show>
+                                <li class="profile-item">
+                                    <Show when={list.profile.avatar}>
+                                        <img
+                                            src={list.profile.avatar!}
+                                            alt=""
+                                            class="avatar-small"
+                                        />
+                                    </Show>
+                                    <div>
                                         <a href={list.list.url}>{list.list.name}</a> by{" "}
                                         <a href={`${profilePrefix}${list.profile.handle}`}>
                                             {list.profile.handle}
                                         </a>{" "}
-                                        ({list.profile.followersCount} followers)
-                                    </p>
-                                    <Show when={list.list.description}>
-                                        <p>
-                                            <RichText text={list.list.description!} />
-                                        </p>
-                                    </Show>
+                                        <span class="follower-count">
+                                            ({list.profile.followersCount} followers)
+                                        </span>
+                                        <Show when={list.list.description}>
+                                            <p>
+                                                <RichText text={list.list.description!} />
+                                            </p>
+                                        </Show>
+                                    </div>
                                 </li>
                             )}
                         </For>
@@ -152,7 +123,7 @@ const Page: Component = () => {
                 </Match>
             </Switch>
 
-            <p>
+            <p class="footer">
                 This site queries the Bluesky and Clearsky APIs directly in your browser. No data is stored. Note that
                 all content is generated from those APIs; I can't be responsible for anything that shows up here, and
                 list creator follower count is not neccesarily a good measure of quality or trustworthiness. Use these
