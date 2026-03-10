@@ -1,8 +1,13 @@
 form {
     display: flex;
+    gap: 8px;
 }
 
 input[type="text"] {
     flex-grow: 1;
-    margin-left: 6px;
+    margin: 0;
+}
+
+button {
+    margin: 0;
 }
