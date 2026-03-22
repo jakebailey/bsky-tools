@@ -66,8 +66,8 @@ export async function mapConcurrent<T, R>(items: T[], concurrency: number, fn: (
 export async function getProfiles(
     actors: ActorIdentifier[],
     signal?: AbortSignal,
-): Promise<Map<string, ProfileViewDetailed>> {
-    const map = new Map<string, ProfileViewDetailed>();
+): Promise<Map<ActorIdentifier, ProfileViewDetailed>> {
+    const map = new Map<ActorIdentifier, ProfileViewDetailed>();
     const chunks = chunked(actors, 25);
     const results = await mapConcurrent(
         chunks,
@@ -81,3 +81,38 @@ export async function getProfiles(
     }
     return map;
 }
+
+const paginate = async (
+    endpoint: "app.bsky.graph.getFollowers" | "app.bsky.graph.getFollows",
+    actor: ActorIdentifier,
+    onProgress?: (info: { current: number; }) => void,
+    signal?: AbortSignal,
+): Promise<Map<ActorIdentifier, ProfileView>> => {
+    const all = new Map<ActorIdentifier, ProfileView>();
+    let cursor: string | undefined;
+    do {
+        const res = await ok(rpc.get(endpoint, {
+            params: { actor, limit: 100, cursor },
+            signal,
+        }));
+        const profiles = "followers" in res ? res.followers : res.follows;
+        for (const f of profiles) {
+            all.set(f.did, f);
+        }
+        cursor = res.cursor;
+        onProgress?.({ current: all.size });
+    } while (cursor);
+    return all;
+};
+
+export const getAllFollows = (
+    actor: ActorIdentifier,
+    onProgress?: (info: { current: number; }) => void,
+    signal?: AbortSignal,
+) => paginate("app.bsky.graph.getFollows", actor, onProgress, signal);
+
+export const getAllFollowers = (
+    actor: ActorIdentifier,
+    onProgress?: (info: { current: number; }) => void,
+    signal?: AbortSignal,
+) => paginate("app.bsky.graph.getFollowers", actor, onProgress, signal);

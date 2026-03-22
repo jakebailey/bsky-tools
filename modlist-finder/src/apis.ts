@@ -7,23 +7,27 @@ import { type ProfileView, rpc } from "../../shared/bsky";
 
 export { getProfile, getProfiles, type ProfileView, type ProfileViewDetailed } from "../../shared/bsky";
 
-// Simple rate limiter for Clearsky API (5 requests per second)
+// Queue-based rate limiter for Clearsky API (5 requests per second)
 // https://github.com/ClearskyApp06/clearskyservices/blob/main/api.md#rate-limiting
-const clearskyTimestamps: number[] = [];
 const clearskyConcurrencyLimit = 5;
+const clearskyTimestamps: number[] = [];
+let clearskyQueue: Promise<void> = Promise.resolve();
 
-async function clearskyRateLimit(): Promise<void> {
-    while (true) {
-        const now = Date.now();
-        while (clearskyTimestamps.length > 0 && clearskyTimestamps[0] < now - 1000) {
-            clearskyTimestamps.shift();
+function clearskyRateLimit(): Promise<void> {
+    clearskyQueue = clearskyQueue.then(async () => {
+        while (true) {
+            const now = Date.now();
+            while (clearskyTimestamps.length > 0 && clearskyTimestamps[0] < now - 1000) {
+                clearskyTimestamps.shift();
+            }
+            if (clearskyTimestamps.length < clearskyConcurrencyLimit) {
+                clearskyTimestamps.push(Date.now());
+                return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1000 - (now - clearskyTimestamps[0])));
         }
-        if (clearskyTimestamps.length < clearskyConcurrencyLimit) {
-            clearskyTimestamps.push(now);
-            return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1000 - (now - clearskyTimestamps[0])));
-    }
+    });
+    return clearskyQueue;
 }
 
 const ClearskyListsSchema = v.object({

@@ -4,7 +4,7 @@ import "./App.css";
 
 import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
-import { type Component, createEffect, createSignal, For, Match, Show, Switch } from "solid-js";
+import { type Component, createEffect, createSignal, ErrorBoundary, For, Match, Show, Switch } from "solid-js";
 import { cleanHandle, isEngagementHacker, profilePrefix } from "../../shared/bsky";
 import { HandleInput } from "../../shared/HandleInput";
 import { ProfileCard } from "../../shared/ProfileCard";
@@ -512,9 +512,18 @@ const Page: Component = () => {
 
 const App: Component = () => {
     return (
-        <HashRouter root={(props) => <>{props.children}</>}>
-            <Route path="/:handleA?/:handleB?" component={Page} />
-        </HashRouter>
+        <ErrorBoundary
+            fallback={(err) => (
+                <div class="error">
+                    <h1>Something went wrong</h1>
+                    <p>{String(err)}</p>
+                </div>
+            )}
+        >
+            <HashRouter root={(props) => <>{props.children}</>}>
+                <Route path="/:handleA?/:handleB?" component={Page} />
+            </HashRouter>
+        </ErrorBoundary>
     );
 };
 

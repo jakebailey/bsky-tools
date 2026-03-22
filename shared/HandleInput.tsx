@@ -120,6 +120,8 @@ export const HandleInput: Component<{
         selectSuggestion(actor);
     };
 
+    const listboxId = () => `${props.id}-listbox`;
+
     return (
         <div class="handle-input-wrapper">
             <input
@@ -127,6 +129,11 @@ export const HandleInput: Component<{
                 id={props.id}
                 name={props.name}
                 type="text"
+                role="combobox"
+                aria-expanded={showDropdown() && suggestions().length > 0}
+                aria-controls={listboxId()}
+                aria-activedescendant={selectedIndex() >= 0 ? `${props.id}-option-${selectedIndex()}` : undefined}
+                aria-autocomplete="list"
                 placeholder={props.placeholder ?? "Enter handle, DID, or profile link"}
                 value={query()}
                 autofocus={props.autofocus}
@@ -147,10 +154,11 @@ export const HandleInput: Component<{
                 }}
             />
             <Show when={showDropdown() && suggestions().length > 0}>
-                <ul class="handle-suggestions" role="listbox">
+                <ul id={listboxId()} class="handle-suggestions" role="listbox">
                     <For each={suggestions()}>
                         {(actor, i) => (
                             <li
+                                id={`${props.id}-option-${i()}`}
                                 role="option"
                                 aria-selected={i() === selectedIndex()}
                                 classList={{ "suggestion-selected": i() === selectedIndex() }}

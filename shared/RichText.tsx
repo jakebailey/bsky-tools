@@ -3,7 +3,7 @@ import { type Component, For, type JSX } from "solid-js";
 import { profilePrefix } from "./bsky";
 
 // Ported from the official Bluesky app's RichText.tsx for bare URL detection
-const URL_RE = /(^|\s|\()((https?:\/\/[\S]+)|((?<domain>[a-z][a-z0-9]*(\.[a-z0-9]+)+)[\S]*))/gi;
+const URL_RE = /(^|\s|\()((https?:\/\/[\S]{1,2048})|((?<domain>[a-z][a-z0-9]*(\.[a-z0-9]+)+)[\S]{0,2048}))/gi;
 
 function renderTextWithLinks(text: string): JSX.Element {
     const parts: JSX.Element[] = [];
@@ -15,7 +15,7 @@ function renderTextWithLinks(text: string): JSX.Element {
             parts.push(text.slice(lastIndex, idx));
         }
         const href = fullMatch.startsWith("http") ? fullMatch : `https://${fullMatch}`;
-        parts.push(<a href={href}>{fullMatch}</a>);
+        parts.push(<a href={href} rel="noopener noreferrer">{fullMatch}</a>);
         lastIndex = idx + fullMatch.length;
     }
     if (lastIndex < text.length) {

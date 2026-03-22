@@ -4,7 +4,7 @@ import "./App.css";
 
 import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
-import { type Component, createEffect, createSignal, For, Match, Show, Switch } from "solid-js";
+import { type Component, createEffect, createSignal, ErrorBoundary, For, Match, Show, Switch } from "solid-js";
 import { cleanHandle, isEngagementHacker, profilePrefix } from "../../shared/bsky";
 import { HandleInput } from "../../shared/HandleInput";
 import { ProfileCard } from "../../shared/ProfileCard";
@@ -213,6 +213,7 @@ const Page: Component = () => {
             </Switch>
 
             <p class="footer">
+                This site queries the Bluesky API directly in your browser. No data is stored.{" "}
                 <a href=".." rel="external">← Back to Bluesky Tools</a>
             </p>
         </div>
@@ -220,9 +221,18 @@ const Page: Component = () => {
 };
 
 const App: Component = () => (
-    <HashRouter>
-        <Route path="/:handle?" component={Page} />
-    </HashRouter>
+    <ErrorBoundary
+        fallback={(err) => (
+            <div class="error">
+                <h1>Something went wrong</h1>
+                <p>{String(err)}</p>
+            </div>
+        )}
+    >
+        <HashRouter>
+            <Route path="/:handle?" component={Page} />
+        </HashRouter>
+    </ErrorBoundary>
 );
 
 export default App;

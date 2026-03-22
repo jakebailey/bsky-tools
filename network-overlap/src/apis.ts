@@ -1,9 +1,17 @@
-import { ok } from "@atcute/client";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
-import { getProfile, getProfiles, type ProfileView, type ProfileViewDetailed, rpc } from "../../shared/bsky";
+import {
+    getAllFollowers,
+    getAllFollows,
+    getProfile,
+    getProfiles,
+    type ProfileView,
+    type ProfileViewDetailed,
+} from "../../shared/bsky";
 
 export {
     type ActorIdentifier,
+    getAllFollowers,
+    getAllFollows,
     getProfile,
     getProfiles,
     type ProfileView,
@@ -15,41 +23,6 @@ export interface ProgressInfo {
     followers?: number;
     follows?: number;
 }
-
-const paginate = async (
-    endpoint: "app.bsky.graph.getFollowers" | "app.bsky.graph.getFollows",
-    actor: ActorIdentifier,
-    onProgress?: (info: { current: number; }) => void,
-    signal?: AbortSignal,
-): Promise<Map<string, ProfileView>> => {
-    const all = new Map<string, ProfileView>();
-    let cursor: string | undefined;
-    do {
-        const res = await ok(rpc.get(endpoint, {
-            params: { actor, limit: 100, cursor },
-            signal,
-        }));
-        const profiles = "followers" in res ? res.followers : res.follows;
-        for (const f of profiles) {
-            all.set(f.did, f);
-        }
-        cursor = res.cursor;
-        onProgress?.({ current: all.size });
-    } while (cursor);
-    return all;
-};
-
-export const getAllFollowers = (
-    actor: ActorIdentifier,
-    onProgress?: (info: { current: number; }) => void,
-    signal?: AbortSignal,
-) => paginate("app.bsky.graph.getFollowers", actor, onProgress, signal);
-
-export const getAllFollows = (
-    actor: ActorIdentifier,
-    onProgress?: (info: { current: number; }) => void,
-    signal?: AbortSignal,
-) => paginate("app.bsky.graph.getFollows", actor, onProgress, signal);
 
 export interface NetworkData {
     profile: ProfileViewDetailed;
