@@ -108,10 +108,12 @@ const Page: Component = () => {
 
     const formatProgress = (progress: ProgressInfo | null, handle: string) => {
         if (!progress) return `Resolving ${handle}...`;
+        if (progress.followers == null && progress.follows == null) return `Fetching network for ${handle}...`;
         const parts = [];
-        if (progress.follows != null) parts.push(`${progress.follows.toLocaleString()} follows fetched`);
+        if (progress.followers != null) parts.push(`${progress.followers.toLocaleString()} followers`);
+        if (progress.follows != null) parts.push(`${progress.follows.toLocaleString()} following`);
         if (progress.mutuals != null) parts.push(`${progress.mutuals.toLocaleString()} mutuals found`);
-        return parts.length > 0 ? parts.join(", ") : `Fetching network for ${handle}...`;
+        return parts.join(", ");
     };
 
     return (

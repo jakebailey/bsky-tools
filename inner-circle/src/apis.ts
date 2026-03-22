@@ -19,6 +19,7 @@ export {
 } from "../../shared/bsky";
 
 export interface ProgressInfo {
+    followers?: number;
     follows?: number;
     mutuals?: number;
 }
@@ -44,7 +45,7 @@ export async function fetchMutualsSorted(
             onProgress?.({ ...progress });
         }, signal),
         getAllFollowers(actor, (info) => {
-            // We track followers progress but show follows in UI
+            progress.followers = info.current;
             onProgress?.({ ...progress });
         }, signal),
     ]);
