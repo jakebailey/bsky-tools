@@ -5,7 +5,7 @@ import "./App.css";
 import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createEffect, createSignal, ErrorBoundary, For, Match, Show, Switch } from "solid-js";
-import { cleanHandle, isEngagementHacker, mapConcurrent, profilePrefix } from "../../shared/bsky";
+import { avatarFallback, cleanHandle, isEngagementHacker, mapConcurrent, profilePrefix } from "../../shared/bsky";
 import { HandleInput } from "../../shared/HandleInput";
 import { ProfileCard } from "../../shared/ProfileCard";
 import { RichText } from "../../shared/RichText";
@@ -337,13 +337,11 @@ const Page: Component = () => {
                                 >
                                     <div>
                                         <a href={list.list.url}>{list.list.name}</a> by{" "}
-                                        <Show when={list.profile.avatar}>
-                                            <img
-                                                src={list.profile.avatar!}
-                                                alt=""
-                                                class="avatar-inline"
-                                            />
-                                        </Show>
+                                        <img
+                                            src={list.profile.avatar || avatarFallback}
+                                            alt=""
+                                            class="avatar-inline"
+                                        />
                                         <a href={`${profilePrefix}${list.profile.handle}`}>
                                             {list.profile.handle}
                                         </a>{" "}

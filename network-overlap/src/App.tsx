@@ -5,7 +5,7 @@ import "./App.css";
 import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createEffect, createSignal, ErrorBoundary, For, Match, Show, Switch } from "solid-js";
-import { cleanHandle, isEngagementHacker, profilePrefix } from "../../shared/bsky";
+import { avatarFallback, cleanHandle, isEngagementHacker, profilePrefix } from "../../shared/bsky";
 import { HandleInput } from "../../shared/HandleInput";
 import { ProfileCard } from "../../shared/ProfileCard";
 import {
@@ -44,9 +44,7 @@ type EnrichedOverlapResult =
 const ProfileListItem: Component<{ profile: ProfileViewDetailed; dimHackers: boolean; }> = (props) => (
     <li class="profile-item" classList={{ "engagement-hacker": props.dimHackers && isEngagementHacker(props.profile) }}>
         <div>
-            <Show when={props.profile.avatar}>
-                <img src={props.profile.avatar!} alt="" class="avatar-inline" />
-            </Show>
+            <img src={props.profile.avatar || avatarFallback} alt="" class="avatar-inline" />
             <a href={`${profilePrefix}${props.profile.handle}`}>
                 {props.profile.displayName || props.profile.handle}
             </a>{" "}

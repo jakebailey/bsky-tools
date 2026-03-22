@@ -21,6 +21,9 @@ export function chunked<A>(array: A[], size: number): A[][] {
 
 export const profilePrefix = "https://bsky.app/profile/";
 
+export const avatarFallback =
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='12' fill='%230070ff'/%3E%3Ccircle cx='12' cy='9.5' r='3.5' fill='%23fff'/%3E%3Cpath fill='%23fff' d='M 12.058 22.784 C 9.422 22.784 7.007 21.836 5.137 20.262 C 5.667 17.988 8.534 16.25 11.99 16.25 C 15.494 16.25 18.391 18.036 18.864 20.357 C 17.01 21.874 14.64 22.784 12.058 22.784 Z'/%3E%3C/svg%3E";
+
 export function cleanHandle(value: string): ActorIdentifier {
     value = value.trim().toLowerCase();
     if (value.startsWith(profilePrefix)) {

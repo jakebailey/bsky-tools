@@ -1,7 +1,7 @@
 import type { AppBskyActorDefs } from "@atcute/bluesky";
 import { ok } from "@atcute/client";
 import { type Component, createEffect, createSignal, For, onCleanup, Show } from "solid-js";
-import { rpc } from "./bsky";
+import { avatarFallback, rpc } from "./bsky";
 
 type ProfileViewBasic = AppBskyActorDefs.ProfileViewBasic;
 
@@ -165,9 +165,7 @@ export const HandleInput: Component<{
                                 onMouseDown={(e) => handleSelect(e, actor)}
                                 onTouchEnd={(e) => handleSelect(e, actor)}
                             >
-                                <Show when={actor.avatar}>
-                                    <img src={actor.avatar!} alt="" class="suggestion-avatar" />
-                                </Show>
+                                <img src={actor.avatar || avatarFallback} alt="" class="suggestion-avatar" />
                                 <div class="suggestion-text">
                                     <Show when={actor.displayName}>
                                         <span class="suggestion-name">{actor.displayName}</span>

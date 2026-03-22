@@ -1,25 +1,21 @@
 import { type Component, Show } from "solid-js";
-import { profilePrefix, type ProfileViewDetailed } from "./bsky";
+import { avatarFallback, profilePrefix, type ProfileViewDetailed } from "./bsky";
 import { RichText } from "./RichText";
 
 export const ProfileCard: Component<{ profile: ProfileViewDetailed; }> = (props) => (
     <blockquote>
         <p>
-            <Show when={props.profile.avatar}>
-                {(avatar) => (
-                    <img
-                        src={avatar()}
-                        alt=""
-                        style={{
-                            width: "24px",
-                            height: "24px",
-                            "border-radius": "50%",
-                            "vertical-align": "middle",
-                            "margin-right": "6px",
-                        }}
-                    />
-                )}
-            </Show>
+            <img
+                src={props.profile.avatar || avatarFallback}
+                alt=""
+                style={{
+                    width: "24px",
+                    height: "24px",
+                    "border-radius": "50%",
+                    "vertical-align": "middle",
+                    "margin-right": "6px",
+                }}
+            />
             <a href={`${profilePrefix}${props.profile.handle}`}>
                 {props.profile.displayName || props.profile.handle}
             </a>{" "}
