@@ -100,7 +100,8 @@ export async function fetchMutualsSorted(
     });
 
     // Sort by followsCount ascending — fewer follows = you're more important to them
-    mutuals.sort((a, b) => a.followsCount - b.followsCount);
+    // Tie-break by follower count descending — more followers first
+    mutuals.sort((a, b) => a.followsCount - b.followsCount || (b.followersCount ?? 0) - (a.followersCount ?? 0));
 
     return { profile, mutuals };
 }
