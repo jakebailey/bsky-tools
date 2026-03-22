@@ -12,5 +12,5 @@
         "isolatedModules": true,
         "strict": true
     },
-    "include": ["shared", "modlist-finder/src", "network-overlap/src"]
+    "include": ["shared", "modlist-finder/src", "network-overlap/src", "inner-circle/src"]
 }
