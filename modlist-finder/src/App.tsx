@@ -406,11 +406,17 @@ const Page: Component = () => {
                                                                         <span class="follows-found">
                                                                             {c().matches.length}{" "}
                                                                             follow{c().matches.length !== 1 ? "s" : ""}
-                                                                            {" "}
-                                                                            found:{" "}
-                                                                            {c().matches.map((m) =>
-                                                                                m.displayName || m.handle
-                                                                            ).join(", ")}
+                                                                            {" "}found:{" "}
+                                                                            <For each={c().matches}>
+                                                                                {(m, i) => (
+                                                                                    <>
+                                                                                        <Show when={i() > 0}>, </Show>
+                                                                                        <a href={`${profilePrefix}${m.handle}`}>
+                                                                                            {m.displayName || m.handle}
+                                                                                        </a>
+                                                                                    </>
+                                                                                )}
+                                                                            </For>
                                                                         </span>
                                                                     </Show>
                                                                 </>
