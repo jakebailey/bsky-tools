@@ -145,7 +145,7 @@ const Page: Component = () => {
                         value={decodeURIComponent(params.handle || "")}
                         autofocus
                     />
-                    <button type="submit">Find Inner Circle</button>
+                    <button type="submit">Search</button>
                 </div>
             </form>
 
