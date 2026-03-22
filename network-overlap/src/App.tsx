@@ -21,13 +21,24 @@ import {
 } from "./apis";
 
 type EnrichedOverlapResult =
-    & Omit<OverlapResult, "sharedFollowers" | "sharedFollows" | "sharedMutuals" | "onlyAFollows" | "onlyBFollows">
+    & Omit<
+        OverlapResult,
+        | "sharedFollowers"
+        | "sharedFollows"
+        | "sharedMutuals"
+        | "onlyAFollows"
+        | "onlyBFollows"
+        | "missingMutualsA"
+        | "missingMutualsB"
+    >
     & {
         sharedFollowers: ProfileViewDetailed[];
         sharedFollows: ProfileViewDetailed[];
         sharedMutuals: ProfileViewDetailed[];
         onlyAFollows: ProfileViewDetailed[];
         onlyBFollows: ProfileViewDetailed[];
+        missingMutualsA: ProfileViewDetailed[];
+        missingMutualsB: ProfileViewDetailed[];
     };
 
 const ProfileListItem: Component<{ profile: ProfileViewDetailed; dimHackers: boolean; }> = (props) => (
@@ -199,6 +210,8 @@ const Page: Component = () => {
                 ...result.sharedMutuals.map((p) => p.did),
                 ...result.onlyAFollows.map((p) => p.did),
                 ...result.onlyBFollows.map((p) => p.did),
+                ...result.missingMutualsA.map((p) => p.did),
+                ...result.missingMutualsB.map((p) => p.did),
             ]);
             const fullProfiles = allDids.size > 0
                 ? await getProfiles([...allDids], signal)
@@ -213,6 +226,8 @@ const Page: Component = () => {
                 sharedMutuals: enrich(result.sharedMutuals),
                 onlyAFollows: enrich(result.onlyAFollows),
                 onlyBFollows: enrich(result.onlyBFollows),
+                missingMutualsA: enrich(result.missingMutualsA),
+                missingMutualsB: enrich(result.missingMutualsB),
             };
 
             // Sort by follower count descending
@@ -223,6 +238,8 @@ const Page: Component = () => {
             enrichedResult.sharedMutuals.sort(byFollowers);
             enrichedResult.onlyAFollows.sort(byFollowers);
             enrichedResult.onlyBFollows.sort(byFollowers);
+            enrichedResult.missingMutualsA.sort(byFollowers);
+            enrichedResult.missingMutualsB.sort(byFollowers);
 
             setState({ status: "done", result: enrichedResult });
         } catch (e) {
@@ -442,6 +459,26 @@ const Page: Component = () => {
                                     profiles={result().sharedFollowers}
                                     countA={result().followersA}
                                     countB={result().followersB}
+                                    dimHackers={dimHackers()}
+                                />
+
+                                <OverlapSection
+                                    title={`@${result().profileA.handle}'s missing mutuals`}
+                                    description={`People @${result().profileB.handle} follows who follow @${result().profileA.handle}, but @${result().profileA.handle} doesn't follow back`}
+                                    profiles={result().missingMutualsA}
+                                    countA={result().followsB}
+                                    countB={result().followersA}
+                                    collapsed
+                                    dimHackers={dimHackers()}
+                                />
+
+                                <OverlapSection
+                                    title={`@${result().profileB.handle}'s missing mutuals`}
+                                    description={`People @${result().profileA.handle} follows who follow @${result().profileB.handle}, but @${result().profileB.handle} doesn't follow back`}
+                                    profiles={result().missingMutualsB}
+                                    countA={result().followsA}
+                                    countB={result().followersB}
+                                    collapsed
                                     dimHackers={dimHackers()}
                                 />
 

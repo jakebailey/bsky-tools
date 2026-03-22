@@ -65,6 +65,8 @@ export interface OverlapResult {
     sharedMutuals: ProfileView[];
     onlyAFollows: ProfileView[];
     onlyBFollows: ProfileView[];
+    missingMutualsA: ProfileView[];
+    missingMutualsB: ProfileView[];
     followersA: number;
     followersB: number;
     followsA: number;
@@ -129,11 +131,29 @@ export const computeOverlap = (a: NetworkData, b: NetworkData): OverlapResult =>
         return mapA.get(did) ?? mapB.get(did)!;
     };
 
+    // Missing mutuals for A: people B follows who follow A, but A doesn't follow back
+    const missingMutualsADids: string[] = [];
+    for (const did of b.follows.keys()) {
+        if (a.followers.has(did) && !a.follows.has(did)) {
+            missingMutualsADids.push(did);
+        }
+    }
+
+    // Missing mutuals for B: people A follows who follow B, but B doesn't follow back
+    const missingMutualsBDids: string[] = [];
+    for (const did of a.follows.keys()) {
+        if (b.followers.has(did) && !b.follows.has(did)) {
+            missingMutualsBDids.push(did);
+        }
+    }
+
     const sharedFollowers = sharedFollowerDids.map((did) => pickProfile(did, a.followers, b.followers));
     const sharedFollows = sharedFollowDids.map((did) => pickProfile(did, a.follows, b.follows));
     const sharedMutuals = sharedMutualDids.map((did) => pickProfile(did, a.follows, b.follows));
     const onlyAFollows = onlyAFollowDids.map((did) => a.follows.get(did)!);
     const onlyBFollows = onlyBFollowDids.map((did) => b.follows.get(did)!);
+    const missingMutualsA = missingMutualsADids.map((did) => pickProfile(did, b.follows, a.followers));
+    const missingMutualsB = missingMutualsBDids.map((did) => pickProfile(did, a.follows, b.followers));
 
     return {
         profileA: a.profile,
@@ -143,6 +163,8 @@ export const computeOverlap = (a: NetworkData, b: NetworkData): OverlapResult =>
         sharedMutuals,
         onlyAFollows,
         onlyBFollows,
+        missingMutualsA,
+        missingMutualsB,
         followersA: a.followers.size,
         followersB: b.followers.size,
         followsA: a.follows.size,
