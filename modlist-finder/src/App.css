@@ -53,6 +53,11 @@ button {
     opacity: 0.4;
 }
 
+.list-size {
+    opacity: 0.5;
+    font-size: 0.85em;
+}
+
 .follows-found {
     color: #e57373;
 }

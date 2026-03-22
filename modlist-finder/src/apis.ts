@@ -90,10 +90,14 @@ export function listAtUri(did: Did, url: string): ResourceUri {
     return `at://${did}/app.bsky.graph.list/${id}` as ResourceUri;
 }
 
-export async function getBlueskyListPurpose(did: Did, url: string, signal?: AbortSignal): Promise<string> {
+export async function getBlueskyListPurpose(
+    did: Did,
+    url: string,
+    signal?: AbortSignal,
+): Promise<{ purpose: string; listItemCount?: number; }> {
     const at = listAtUri(did, url);
     const res = await ok(rpc.get("app.bsky.graph.getList", { params: { list: at, limit: 1 }, signal }));
-    return res.list.purpose;
+    return { purpose: res.list.purpose, listItemCount: res.list.listItemCount };
 }
 
 export async function getFollows(actor: ActorIdentifier, signal?: AbortSignal): Promise<Set<string>> {

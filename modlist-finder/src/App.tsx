@@ -25,6 +25,7 @@ import {
 interface ListEntry {
     profile: ProfileViewDetailed;
     list: ClearskyList;
+    listItemCount?: number;
 }
 
 async function processLists(
@@ -35,10 +36,10 @@ async function processLists(
     let checked = 0;
     const results = await mapConcurrent(clearskyLists, 10, async (list) => {
         try {
-            const purpose = await getBlueskyListPurpose(list.did, list.url, signal);
-            return { list, purpose, ok: true as const };
+            const { purpose, listItemCount } = await getBlueskyListPurpose(list.did, list.url, signal);
+            return { list, purpose, listItemCount, ok: true as const };
         } catch {
-            return { list, purpose: "", ok: false as const };
+            return { list, purpose: "", listItemCount: undefined, ok: false as const };
         } finally {
             checked++;
             onProgress?.(checked, clearskyLists.length);
@@ -46,12 +47,11 @@ async function processLists(
     });
 
     const modClearskyLists = results
-        .filter((r) => r.ok && r.purpose === "app.bsky.graph.defs#modlist")
-        .map((r) => r.list);
+        .filter((r) => r.ok && r.purpose === "app.bsky.graph.defs#modlist");
 
     let profiles: Map<string, ProfileViewDetailed> | undefined;
     try {
-        profiles = await getProfiles(modClearskyLists.map((list) => list.did), signal);
+        profiles = await getProfiles(modClearskyLists.map((r) => r.list.did), signal);
     } catch {
         // ignore
     }
@@ -61,12 +61,12 @@ async function processLists(
     }
 
     const lists: ListEntry[] = [];
-    for (const list of modClearskyLists) {
-        const listProfile = profiles.get(list.did);
+    for (const r of modClearskyLists) {
+        const listProfile = profiles.get(r.list.did);
         if (!listProfile || listProfile.handle === "handle.invalid") {
             continue;
         }
-        lists.push({ profile: listProfile, list });
+        lists.push({ profile: listProfile, list: r.list, listItemCount: r.listItemCount });
     }
 
     return lists;
@@ -350,6 +350,12 @@ const Page: Component = () => {
                                         <span class="follower-count">
                                             ({list.profile.followersCount} followers)
                                         </span>
+                                        <Show when={list.listItemCount != null}>
+                                            {" "}
+                                            <span class="list-size">
+                                                · {list.listItemCount!.toLocaleString()} members
+                                            </span>
+                                        </Show>
                                         <Show when={isEngagementHacker(list.profile)}>
                                             {" "}
                                             <span
