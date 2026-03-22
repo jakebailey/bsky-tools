@@ -10,11 +10,15 @@ import { HandleInput } from "../../shared/HandleInput";
 import { ProfileCard } from "../../shared/ProfileCard";
 import { RichText } from "../../shared/RichText";
 import {
+    checkListForFollows,
     type ClearskyList,
     getBlueskyListPurpose,
     getClearskyLists,
+    getFollows,
     getProfile,
     getProfiles,
+    listAtUri,
+    type ProfileView,
     type ProfileViewDetailed,
 } from "./apis";
 
@@ -102,6 +106,74 @@ const Page: Component = () => {
     const [dimHackers, setDimHackers] = makePersisted(createSignal(true), { name: "dimHackers" });
     const [extraLists, setExtraLists] = createSignal<ListEntry[]>([]);
     const [loadingMore, setLoadingMore] = createSignal(false);
+
+    // Follow-check state
+    const [viewerHandle, setViewerHandle] = makePersisted(createSignal(""), { name: "viewerHandle" });
+    const [viewerFollows, setViewerFollows] = createSignal<Set<string>>();
+    const [followsLoading, setFollowsLoading] = createSignal(false);
+    const [followsError, setFollowsError] = createSignal<string>();
+    const [listChecks, setListChecks] = createSignal<
+        Record<string, {
+            status: "checking" | "done";
+            checked: number;
+            matches: ProfileView[];
+        }>
+    >({});
+    let followsAbort: AbortController | undefined;
+
+    const loadFollows = async () => {
+        const handle = viewerHandle();
+        if (!handle) return;
+        followsAbort?.abort();
+        const controller = new AbortController();
+        followsAbort = controller;
+        setFollowsLoading(true);
+        setFollowsError(undefined);
+        setListChecks({});
+        try {
+            const cleaned = cleanHandle(handle);
+            const follows = await getFollows(cleaned, controller.signal);
+            if (controller.signal.aborted) return;
+            setViewerFollows(follows);
+        } catch (e) {
+            if (controller.signal.aborted) return;
+            setFollowsError(e instanceof Error ? e.message : String(e));
+        } finally {
+            setFollowsLoading(false);
+        }
+    };
+
+    const checkList = async (list: ClearskyList) => {
+        const follows = viewerFollows();
+        if (!follows) return;
+        const key = list.url;
+        setListChecks((prev) => ({
+            ...prev,
+            [key]: { status: "checking", checked: 0, matches: [] },
+        }));
+        try {
+            const uri = listAtUri(list.did, list.url);
+            const s = state();
+            const excludeDid = s.status === "done" ? s.profile.did : undefined;
+            await checkListForFollows(uri, follows, excludeDid, (checked, matches) => {
+                setListChecks((prev) => ({
+                    ...prev,
+                    [key]: { ...prev[key], checked, matches: [...matches] },
+                }));
+            }, abortController?.signal);
+            setListChecks((prev) => ({
+                ...prev,
+                [key]: { ...prev[key], status: "done" },
+            }));
+        } catch (e) {
+            if (!(e instanceof DOMException && e.name === "AbortError")) {
+                setListChecks((prev) => ({
+                    ...prev,
+                    [key]: { ...prev[key], status: "done" },
+                }));
+            }
+        }
+    };
 
     const allLists = () => {
         const s = state();
@@ -223,6 +295,36 @@ const Page: Component = () => {
                         />{" "}
                         Dim suspected engagement hackers
                     </label>
+
+                    <div class="follows-check">
+                        <p class="follows-check-label">Check lists for people you follow</p>
+                        <form
+                            class="follows-form"
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                loadFollows();
+                            }}
+                        >
+                            <HandleInput
+                                id="viewer-handle"
+                                name="viewer-handle"
+                                placeholder="Your handle"
+                                value={viewerHandle()}
+                                onChange={setViewerHandle}
+                            />
+                            <button type="submit" disabled={followsLoading() || !viewerHandle()}>
+                                {followsLoading() ? "Loading..." : "Load follows"}
+                            </button>
+                        </form>
+                        <Show when={followsError()}>
+                            <p class="error">{followsError()}</p>
+                        </Show>
+                        <Show when={viewerFollows()}>
+                            {(follows) => <p class="follows-loaded">{follows().size.toLocaleString()} follows loaded
+                            </p>}
+                        </Show>
+                    </div>
+
                     <p>{allLists().length} moderation lists</p>
                     <ul class="profile-list">
                         <For each={allLists()}>
@@ -261,6 +363,56 @@ const Page: Component = () => {
                                             <p>
                                                 <RichText text={list.list.description!} />
                                             </p>
+                                        </Show>
+                                        <Show when={viewerFollows()}>
+                                            {(_follows) => {
+                                                const check = () => listChecks()[list.list.url];
+                                                return (
+                                                    <div class="follow-check-row">
+                                                        <Show
+                                                            when={check()}
+                                                            fallback={
+                                                                <button
+                                                                    class="check-follows-btn"
+                                                                    onClick={() => checkList(list.list)}
+                                                                >
+                                                                    Check for follows
+                                                                </button>
+                                                            }
+                                                        >
+                                                            {(c) => (
+                                                                <>
+                                                                    <Show when={c().status === "checking"}>
+                                                                        <span class="check-progress">
+                                                                            Checked {c().checked.toLocaleString()}...
+                                                                        </span>
+                                                                    </Show>
+                                                                    <Show
+                                                                        when={c().matches.length > 0}
+                                                                        fallback={
+                                                                            <Show when={c().status === "done"}>
+                                                                                <span class="no-follows-found">
+                                                                                    No follows found
+                                                                                </span>
+                                                                            </Show>
+                                                                        }
+                                                                    >
+                                                                        <span class="follows-found">
+                                                                            {c().matches.length}{" "}
+                                                                            follow{c().matches.length !== 1 ? "s" : ""}
+                                                                            {" "}
+                                                                            found:{" "}
+                                                                            {c().matches.map((m) =>
+                                                                                m.displayName || m.handle
+                                                                            ).join(", ")}
+                                                                        </span>
+                                                                    </Show>
+                                                                </>
+                                                            )}
+                                                        </Show>
+                                                    </div>
+                                                ) as unknown as Element;
+                                            }}
                                         </Show>
                                     </div>
                                 </li>

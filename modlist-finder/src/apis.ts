@@ -1,10 +1,11 @@
 import { ok } from "@atcute/client";
 import type { Did } from "@atcute/lexicons/syntax";
 import { isDid } from "@atcute/lexicons/syntax";
+import type { ActorIdentifier, ResourceUri } from "@atcute/lexicons/syntax";
 import * as v from "valibot";
-import { rpc } from "../../shared/bsky";
+import { type ProfileView, rpc } from "../../shared/bsky";
 
-export { getProfile, getProfiles, type ProfileViewDetailed } from "../../shared/bsky";
+export { getProfile, getProfiles, type ProfileView, type ProfileViewDetailed } from "../../shared/bsky";
 
 // Simple rate limiter for Clearsky API (5 requests per second)
 // https://github.com/ClearskyApp06/clearskyservices/blob/main/api.md#rate-limiting
@@ -84,9 +85,56 @@ export async function getClearskyLists(
     return { lists: allLists, hasMore, nextPage: startPage + maxPages };
 }
 
-export async function getBlueskyListPurpose(did: Did, url: string, signal?: AbortSignal): Promise<string> {
+export function listAtUri(did: Did, url: string): ResourceUri {
     const id = url.split("/").at(-1);
-    const at = `at://${did}/app.bsky.graph.list/${id}` as const;
+    return `at://${did}/app.bsky.graph.list/${id}` as ResourceUri;
+}
+
+export async function getBlueskyListPurpose(did: Did, url: string, signal?: AbortSignal): Promise<string> {
+    const at = listAtUri(did, url);
     const res = await ok(rpc.get("app.bsky.graph.getList", { params: { list: at, limit: 1 }, signal }));
     return res.list.purpose;
+}
+
+export async function getFollows(actor: ActorIdentifier, signal?: AbortSignal): Promise<Set<string>> {
+    const dids = new Set<string>();
+    let cursor: string | undefined;
+    do {
+        const res = await ok(rpc.get("app.bsky.graph.getFollows", {
+            params: { actor, limit: 100, cursor },
+            signal,
+        }));
+        for (const follow of res.follows) {
+            dids.add(follow.did);
+        }
+        cursor = res.cursor;
+    } while (cursor);
+    return dids;
+}
+
+export async function checkListForFollows(
+    listUri: ResourceUri,
+    followDids: Set<string>,
+    excludeDid: string | undefined,
+    onProgress: (checked: number, matches: ProfileView[]) => void,
+    signal?: AbortSignal,
+): Promise<ProfileView[]> {
+    const matches: ProfileView[] = [];
+    let cursor: string | undefined;
+    let checked = 0;
+    do {
+        const res = await ok(rpc.get("app.bsky.graph.getList", {
+            params: { list: listUri, limit: 100, cursor },
+            signal,
+        }));
+        for (const item of res.items) {
+            checked++;
+            if (item.subject.did !== excludeDid && followDids.has(item.subject.did)) {
+                matches.push(item.subject);
+            }
+        }
+        onProgress(checked, matches);
+        cursor = res.cursor;
+    } while (cursor);
+    return matches;
 }

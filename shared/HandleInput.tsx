@@ -20,6 +20,7 @@ export const HandleInput: Component<{
     placeholder?: string;
     value?: string;
     autofocus?: boolean;
+    onChange?: (value: string) => void;
 }> = (props) => {
     const [query, setQuery] = createSignal(props.value ?? "");
     const [suggestions, setSuggestions] = createSignal<ProfileViewBasic[]>([]);
@@ -84,6 +85,7 @@ export const HandleInput: Component<{
         setSuggestions([]);
         setShowDropdown(false);
         inputRef.value = actor.handle;
+        props.onChange?.(actor.handle);
         inputRef.dispatchEvent(new Event("input", { bubbles: true }));
         // Auto-submit if all handle inputs in the form have values
         const form = inputRef.closest("form");
@@ -133,6 +135,7 @@ export const HandleInput: Component<{
                     const val = e.currentTarget.value;
                     setQuery(val);
                     doSearch(val);
+                    props.onChange?.(val);
                 }}
                 onKeyDown={onKeyDown}
                 onFocus={() => {

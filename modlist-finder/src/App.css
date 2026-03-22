@@ -11,3 +11,48 @@ input[type="text"] {
 button {
     margin: 0;
 }
+
+.follows-check {
+    margin: 12px 0;
+    font-size: 0.9em;
+}
+
+.follows-check-label {
+    opacity: 0.7;
+    margin: 0 0 8px 0;
+}
+
+.follows-form {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    position: relative;
+    z-index: 10;
+}
+
+.follows-loaded {
+    font-size: 0.85em;
+    opacity: 0.6;
+}
+
+.follow-check-row {
+    margin-top: 4px;
+    font-size: 0.85em;
+}
+
+.check-follows-btn {
+    font-size: 0.8em;
+    padding: 2px 8px;
+}
+
+.check-progress {
+    opacity: 0.5;
+}
+
+.no-follows-found {
+    opacity: 0.4;
+}
+
+.follows-found {
+    color: #e57373;
+}
