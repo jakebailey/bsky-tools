@@ -45,6 +45,17 @@ button {
     padding: 2px 8px;
 }
 
+.profile-item {
+    padding: 10px 12px;
+    margin: 8px 0;
+    border: 1px solid #444;
+    border-radius: 6px;
+}
+
+.profile-item p {
+    margin: 4px 0 0;
+}
+
 .check-progress {
     opacity: 0.5;
 }
