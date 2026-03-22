@@ -25,11 +25,11 @@ type AppState =
 
 const MutualListItem: Component<{ profile: MutualProfile; rank: number; dimHackers: boolean; }> = (props) => (
     <li class="profile-item" classList={{ "engagement-hacker": props.dimHackers && isEngagementHacker(props.profile) }}>
-        <span class="mutual-rank">{props.rank}</span>
-        <Show when={props.profile.avatar}>
-            <img src={props.profile.avatar!} alt="" class="avatar-small" />
-        </Show>
         <div>
+            <span class="mutual-rank">{props.rank}</span>
+            <Show when={props.profile.avatar}>
+                <img src={props.profile.avatar!} alt="" class="avatar-inline" />
+            </Show>
             <a href={`${profilePrefix}${props.profile.handle}`}>
                 {props.profile.displayName || props.profile.handle}
             </a>{" "}

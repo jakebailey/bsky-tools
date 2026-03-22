@@ -28,10 +28,9 @@ h1 {
 .mutual-rank {
     opacity: 0.4;
     font-size: 0.85em;
-    min-width: 2.5em;
-    text-align: right;
-    margin-right: 8px;
+    margin-right: 4px;
     font-variant-numeric: tabular-nums;
+    display: inline;
 }
 
 .follows-count {

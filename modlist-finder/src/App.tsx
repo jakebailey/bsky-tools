@@ -335,15 +335,15 @@ const Page: Component = () => {
                                         "engagement-hacker": dimHackers() && isEngagementHacker(list.profile),
                                     }}
                                 >
-                                    <Show when={list.profile.avatar}>
-                                        <img
-                                            src={list.profile.avatar!}
-                                            alt=""
-                                            class="avatar-small"
-                                        />
-                                    </Show>
                                     <div>
                                         <a href={list.list.url}>{list.list.name}</a> by{" "}
+                                        <Show when={list.profile.avatar}>
+                                            <img
+                                                src={list.profile.avatar!}
+                                                alt=""
+                                                class="avatar-inline"
+                                            />
+                                        </Show>
                                         <a href={`${profilePrefix}${list.profile.handle}`}>
                                             {list.profile.handle}
                                         </a>{" "}
