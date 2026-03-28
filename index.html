@@ -6,6 +6,12 @@
     <title>Bluesky Tools</title>
     <link rel="stylesheet" href="./node_modules/water.css/out/dark.min.css" />
     <link rel="stylesheet" href="./shared.css" />
+    <script>
+        if (window.location.host !== "jakebailey.dev") {
+            window.goatcounter = { no_onload: true };
+        }
+    </script>
+    <script data-goatcounter="https://stats.jakebailey.dev/count" async src="/count.js" vite-ignore></script>
     <style>
         body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; }
         .tools { list-style: none; padding: 0; text-align: center; }
