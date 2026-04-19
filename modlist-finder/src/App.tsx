@@ -27,6 +27,7 @@ interface ListEntry {
     list: ClearskyList;
     listItemCount?: number;
     addedAt?: string;
+    indexedAt?: string;
 }
 
 async function processLists(
@@ -37,8 +38,8 @@ async function processLists(
     let checked = 0;
     const results = await mapConcurrent(clearskyLists, 10, async (list) => {
         try {
-            const { purpose, listItemCount } = await getBlueskyListPurpose(list.did, list.url, signal);
-            return { list, purpose, listItemCount, ok: true as const };
+            const { purpose, listItemCount, indexedAt } = await getBlueskyListPurpose(list.did, list.url, signal);
+            return { list, purpose, listItemCount, indexedAt, ok: true as const };
         } catch {
             return { list, purpose: "", listItemCount: undefined, ok: false as const };
         } finally {
@@ -67,7 +68,13 @@ async function processLists(
         if (!listProfile || listProfile.handle === "handle.invalid") {
             continue;
         }
-        lists.push({ profile: listProfile, list: r.list, listItemCount: r.listItemCount, addedAt: r.list.date_added ?? undefined });
+        lists.push({
+            profile: listProfile,
+            list: r.list,
+            listItemCount: r.listItemCount,
+            addedAt: r.list.date_added ?? undefined,
+            indexedAt: r.indexedAt,
+        });
     }
 
     return lists;
@@ -349,18 +356,6 @@ const Page: Component = () => {
                                         <span class="follower-count">
                                             ({list.profile.followersCount?.toLocaleString()} followers)
                                         </span>
-                                        <Show when={list.listItemCount != null}>
-                                            {" "}
-                                            <span class="list-size">
-                                                · {list.listItemCount!.toLocaleString()} members
-                                            </span>
-                                        </Show>
-                                        <Show when={list.addedAt}>
-                                            {" "}
-                                            <span class="date-added">
-                                                · added {new Date(list.addedAt!).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
-                                            </span>
-                                        </Show>
                                         <Show when={isEngagementHacker(list.profile)}>
                                             {" "}
                                             <span
@@ -370,6 +365,39 @@ const Page: Component = () => {
                                                 ⚠️
                                             </span>
                                         </Show>
+                                        <div class="list-meta">
+                                            <Show when={list.listItemCount != null}>
+                                                <span class="list-size">
+                                                    {list.listItemCount!.toLocaleString()} members
+                                                </span>
+                                            </Show>
+                                            <Show when={list.indexedAt}>
+                                                <span class="date-added">
+                                                    last updated{" "}
+                                                    {new Date(list.indexedAt!).toLocaleDateString(undefined, {
+                                                        year: "numeric",
+                                                        month: "short",
+                                                        day: "numeric",
+                                                    })}
+                                                </span>
+                                            </Show>
+                                            <Show when={list.addedAt}>
+                                                {(() => {
+                                                    const s = state();
+                                                    const handle = s.status === "done" ? s.profile.handle : undefined;
+                                                    return (
+                                                        <span class="date-added">
+                                                            {handle ? `@${handle}` : "user"} added{" "}
+                                                            {new Date(list.addedAt!).toLocaleDateString(undefined, {
+                                                                year: "numeric",
+                                                                month: "short",
+                                                                day: "numeric",
+                                                            })}
+                                                        </span>
+                                                    );
+                                                })()}
+                                            </Show>
+                                        </div>
                                         <Show when={list.list.description}>
                                             <p>
                                                 <RichText text={list.list.description!} />

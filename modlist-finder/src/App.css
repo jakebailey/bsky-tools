@@ -64,15 +64,18 @@ button {
     opacity: 0.4;
 }
 
-.list-size {
-    opacity: 0.5;
+.list-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin-top: 4px;
     font-size: 0.85em;
+    opacity: 0.5;
 }
 
-.date-added {
-    opacity: 0.5;
-    font-size: 0.85em;
-}
+.list-size {}
+
+.date-added {}
 
 .follows-found {
     color: #e57373;

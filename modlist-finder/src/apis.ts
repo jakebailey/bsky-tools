@@ -99,10 +99,10 @@ export async function getBlueskyListPurpose(
     did: Did,
     url: string,
     signal?: AbortSignal,
-): Promise<{ purpose: string; listItemCount?: number; }> {
+): Promise<{ purpose: string; listItemCount?: number; indexedAt: string; }> {
     const at = listAtUri(did, url);
     const res = await ok(rpc.get("app.bsky.graph.getList", { params: { list: at, limit: 1 }, signal }));
-    return { purpose: res.list.purpose, listItemCount: res.list.listItemCount };
+    return { purpose: res.list.purpose, listItemCount: res.list.listItemCount, indexedAt: res.list.indexedAt };
 }
 
 export async function getFollows(actor: ActorIdentifier, signal?: AbortSignal): Promise<Set<string>> {
