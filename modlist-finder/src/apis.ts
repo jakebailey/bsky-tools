@@ -37,6 +37,7 @@ const ClearskyListsSchema = v.object({
             url: v.string(),
             name: v.string(),
             description: v.optional(v.nullable(v.string())),
+            date_added: v.optional(v.nullable(v.string())),
         })),
     }),
 });

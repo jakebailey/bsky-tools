@@ -26,6 +26,7 @@ interface ListEntry {
     profile: ProfileViewDetailed;
     list: ClearskyList;
     listItemCount?: number;
+    addedAt?: string;
 }
 
 async function processLists(
@@ -66,7 +67,7 @@ async function processLists(
         if (!listProfile || listProfile.handle === "handle.invalid") {
             continue;
         }
-        lists.push({ profile: listProfile, list: r.list, listItemCount: r.listItemCount });
+        lists.push({ profile: listProfile, list: r.list, listItemCount: r.listItemCount, addedAt: r.list.date_added ?? undefined });
     }
 
     return lists;
@@ -352,6 +353,12 @@ const Page: Component = () => {
                                             {" "}
                                             <span class="list-size">
                                                 · {list.listItemCount!.toLocaleString()} members
+                                            </span>
+                                        </Show>
+                                        <Show when={list.addedAt}>
+                                            {" "}
+                                            <span class="date-added">
+                                                · added {new Date(list.addedAt!).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
                                             </span>
                                         </Show>
                                         <Show when={isEngagementHacker(list.profile)}>
