@@ -102,6 +102,12 @@ html > body {
     cursor: help;
 }
 
+.hidden-badge {
+    font-size: 0.8em;
+    color: #e57373;
+    cursor: help;
+}
+
 .dim-toggle {
     display: block;
     margin: 12px 0;

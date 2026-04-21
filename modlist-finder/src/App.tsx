@@ -18,6 +18,7 @@ import {
     getProfile,
     getProfiles,
     listAtUri,
+    type ListLabel,
     type ProfileView,
     type ProfileViewDetailed,
 } from "./apis";
@@ -28,6 +29,7 @@ interface ListEntry {
     listItemCount?: number;
     addedAt?: string;
     indexedAt?: string;
+    labels?: ListLabel[];
 }
 
 async function processLists(
@@ -38,8 +40,8 @@ async function processLists(
     let checked = 0;
     const results = await mapConcurrent(clearskyLists, 10, async (list) => {
         try {
-            const { purpose, listItemCount, indexedAt } = await getBlueskyListPurpose(list.did, list.url, signal);
-            return { list, purpose, listItemCount, indexedAt, ok: true as const };
+            const { purpose, listItemCount, indexedAt, labels } = await getBlueskyListPurpose(list.did, list.url, signal);
+            return { list, purpose, listItemCount, indexedAt, labels, ok: true as const };
         } catch {
             return { list, purpose: "", listItemCount: undefined, ok: false as const };
         } finally {
@@ -73,6 +75,7 @@ async function processLists(
             list: r.list,
             listItemCount: r.listItemCount,
             addedAt: r.list.date_added ?? undefined,
+            labels: r.labels,
             indexedAt: r.indexedAt,
         });
     }
@@ -363,6 +366,15 @@ const Page: Component = () => {
                                                 title="Suspected engagement hacker (following 10k+ with high follow ratio)"
                                             >
                                                 ⚠️
+                                            </span>
+                                        </Show>
+                                        <Show when={list.labels?.some((l) => l.val === "!hide")}>
+                                            {" "}
+                                            <span
+                                                class="hidden-badge"
+                                                title="This list is hidden by Bluesky's moderation"
+                                            >
+                                                🚫 Hidden by Bluesky
                                             </span>
                                         </Show>
                                         <div class="list-meta">
