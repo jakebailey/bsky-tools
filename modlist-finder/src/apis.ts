@@ -104,15 +104,33 @@ export async function getBlueskyListPurpose(
     did: Did,
     url: string,
     signal?: AbortSignal,
-): Promise<{ purpose: string; listItemCount?: number; indexedAt: string; labels?: ListLabel[]; }> {
+): Promise<{ purpose: string; listItemCount?: number; latestItemAt?: string; labels?: ListLabel[]; }> {
     const at = listAtUri(did, url);
     const res = await ok(rpc.get("app.bsky.graph.getList", { params: { list: at, limit: 1 }, signal }));
+    // The most recently added item is returned first; extract its timestamp from the TID rkey.
+    const latestItemUri = res.items[0]?.uri;
+    const latestItemAt = latestItemUri ? tidToDate(latestItemUri.split("/").at(-1)!) : undefined;
     return {
         purpose: res.list.purpose,
         listItemCount: res.list.listItemCount,
-        indexedAt: res.list.indexedAt,
+        latestItemAt,
         labels: res.list.labels?.map((l) => ({ val: l.val, src: l.src })),
     };
+}
+
+const S32_CHARS = "234567abcdefghijklmnopqrstuvwxyz";
+
+function tidToDate(tid: string): string | undefined {
+    if (tid.length !== 13) return undefined;
+    let n = 0n;
+    for (const ch of tid) {
+        const i = S32_CHARS.indexOf(ch);
+        if (i === -1) return undefined;
+        n = n * 32n + BigInt(i);
+    }
+    // Upper bits are microseconds since epoch; lower 10 bits are clock ID.
+    const microseconds = n >> 10n;
+    return new Date(Number(microseconds / 1000n)).toISOString();
 }
 
 export async function getFollows(actor: ActorIdentifier, signal?: AbortSignal): Promise<Set<string>> {

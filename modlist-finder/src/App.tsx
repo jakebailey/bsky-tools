@@ -28,7 +28,7 @@ interface ListEntry {
     list: ClearskyList;
     listItemCount?: number;
     addedAt?: string;
-    indexedAt?: string;
+    latestItemAt?: string;
     labels?: ListLabel[];
 }
 
@@ -40,8 +40,8 @@ async function processLists(
     let checked = 0;
     const results = await mapConcurrent(clearskyLists, 10, async (list) => {
         try {
-            const { purpose, listItemCount, indexedAt, labels } = await getBlueskyListPurpose(list.did, list.url, signal);
-            return { list, purpose, listItemCount, indexedAt, labels, ok: true as const };
+            const { purpose, listItemCount, latestItemAt, labels } = await getBlueskyListPurpose(list.did, list.url, signal);
+            return { list, purpose, listItemCount, latestItemAt, labels, ok: true as const };
         } catch {
             return { list, purpose: "", listItemCount: undefined, ok: false as const };
         } finally {
@@ -75,8 +75,8 @@ async function processLists(
             list: r.list,
             listItemCount: r.listItemCount,
             addedAt: r.list.date_added ?? undefined,
+            latestItemAt: r.latestItemAt,
             labels: r.labels,
-            indexedAt: r.indexedAt,
         });
     }
 
@@ -383,10 +383,10 @@ const Page: Component = () => {
                                                     {list.listItemCount!.toLocaleString()} members
                                                 </span>
                                             </Show>
-                                            <Show when={list.indexedAt}>
+                                            <Show when={list.latestItemAt}>
                                                 <span class="date-added">
                                                     last updated{" "}
-                                                    {new Date(list.indexedAt!).toLocaleDateString(undefined, {
+                                                    {new Date(list.latestItemAt!).toLocaleDateString(undefined, {
                                                         year: "numeric",
                                                         month: "short",
                                                         day: "numeric",
