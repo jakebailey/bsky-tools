@@ -343,7 +343,9 @@ const Page: Component = () => {
                                 <li
                                     class="profile-item"
                                     classList={{
-                                        "engagement-hacker": dimHackers() && isEngagementHacker(list.profile),
+                                        dimmed: dimHackers()
+                                            && (isEngagementHacker(list.profile)
+                                                || !!list.labels?.some((l) => l.val === "!hide")),
                                     }}
                                 >
                                     <div>

@@ -24,7 +24,7 @@ type AppState =
     | { status: "error"; error: string; };
 
 const MutualListItem: Component<{ profile: MutualProfile; rank: number; dimHackers: boolean; }> = (props) => (
-    <li class="profile-item" classList={{ "engagement-hacker": props.dimHackers && isEngagementHacker(props.profile) }}>
+    <li class="profile-item" classList={{ dimmed: props.dimHackers && isEngagementHacker(props.profile) }}>
         <div>
             <span class="mutual-rank">{props.rank}</span>
             <img src={props.profile.avatar || avatarFallback} alt="" class="avatar-inline" />

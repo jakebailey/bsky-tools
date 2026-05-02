@@ -42,7 +42,7 @@ type EnrichedOverlapResult =
     };
 
 const ProfileListItem: Component<{ profile: ProfileViewDetailed; dimHackers: boolean; }> = (props) => (
-    <li class="profile-item" classList={{ "engagement-hacker": props.dimHackers && isEngagementHacker(props.profile) }}>
+    <li class="profile-item" classList={{ dimmed: props.dimHackers && isEngagementHacker(props.profile) }}>
         <div>
             <img src={props.profile.avatar || avatarFallback} alt="" class="avatar-inline" />
             <a href={`${profilePrefix}${props.profile.handle}`}>
