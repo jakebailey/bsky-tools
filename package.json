@@ -10,6 +10,11 @@
     },
     "license": "MIT",
     "devDependencies": {
+        "@dprint/json": "0.23.0",
+        "@dprint/markdown": "0.22.1",
+        "@dprint/typescript": "0.96.1",
+        "dprint-plugin-malva": "0.16.0",
+        "dprint-plugin-yaml": "0.6.0",
         "typescript": "^6.0.3",
         "vite": "^8.0.12",
         "vite-plugin-solid": "^2.11.12"

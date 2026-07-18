@@ -40,7 +40,11 @@ async function processLists(
     let checked = 0;
     const results = await mapConcurrent(clearskyLists, 10, async (list) => {
         try {
-            const { purpose, listItemCount, latestItemAt, labels } = await getBlueskyListPurpose(list.did, list.url, signal);
+            const { purpose, listItemCount, latestItemAt, labels } = await getBlueskyListPurpose(
+                list.did,
+                list.url,
+                signal,
+            );
             return { list, purpose, listItemCount, latestItemAt, labels, ok: true as const };
         } catch {
             return { list, purpose: "", listItemCount: undefined, ok: false as const };
