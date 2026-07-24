@@ -15,20 +15,20 @@
         "@dprint/typescript": "0.96.1",
         "dprint-plugin-malva": "0.16.0",
         "dprint-plugin-yaml": "0.6.0",
-        "typescript": "^6.0.3",
-        "vite": "^8.0.12",
-        "vite-plugin-solid": "^2.11.12"
+        "typescript": "^7.0.2",
+        "vite": "^8.1.5",
+        "vite-plugin-solid": "^2.11.13"
     },
     "dependencies": {
-        "@atcute/bluesky": "^4.0.0",
-        "@atcute/bluesky-richtext-parser": "^2.1.1",
-        "@atcute/client": "^5.0.0",
-        "@atcute/lexicons": "^2.0.0",
-        "@solid-primitives/storage": "^4.3.4",
-        "@solidjs/router": "^0.16.1",
-        "solid-js": "^1.9.12",
-        "valibot": "^1.4.0",
+        "@atcute/bluesky": "^4.0.15",
+        "@atcute/bluesky-richtext-parser": "^2.1.2",
+        "@atcute/client": "^5.1.1",
+        "@atcute/lexicons": "^2.0.3",
+        "@solid-primitives/storage": "^4.4.0",
+        "@solidjs/router": "^0.16.2",
+        "solid-js": "^1.9.14",
+        "valibot": "^1.4.2",
         "water.css": "^2.1.1"
     },
-    "packageManager": "pnpm@11.1.0+sha512.0c44e842e5686b2c061a81adda8b2258bd8818e9704b2cf2c63d56b931a7b2e910092e085027003b96ca3911ab56a07f6df5abaed2be9925034cdd686a535b14"
+    "packageManager": "pnpm@11.17.0+sha512.cca3cea332ad254bb84145f966d19f4879615210346fc92c79a047f23a0d7b3cca3c3792f0076ba1f1831d277efbcf0a9119b31a9a60eca7fb3d6231f331ef72"
 }

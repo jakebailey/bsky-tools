@@ -4,7 +4,17 @@ import "./App.css";
 
 import { makePersisted } from "@solid-primitives/storage";
 import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
-import { type Component, createEffect, createSignal, ErrorBoundary, For, Match, Show, Switch } from "solid-js";
+import {
+    type Component,
+    createEffect,
+    createSignal,
+    ErrorBoundary,
+    For,
+    Match,
+    Show,
+    type Signal,
+    Switch,
+} from "solid-js";
 import { avatarFallback, cleanHandle, isEngagementHacker, profilePrefix } from "../../shared/bsky";
 import { HandleInput } from "../../shared/HandleInput";
 import { ProfileCard } from "../../shared/ProfileCard";
@@ -135,7 +145,9 @@ const Page: Component = () => {
     const params = useParams<{ handleA?: string; handleB?: string; }>();
     const [state, setState] = createSignal<CompareState>({ status: "idle" });
     let abortController: AbortController | undefined;
-    const [dimHackers, setDimHackers] = makePersisted(createSignal(true), { name: "dimHackers" });
+    const [dimHackers, setDimHackers] = makePersisted<boolean, Signal<boolean>>(createSignal(true), {
+        name: "dimHackers",
+    });
 
     const doCompare = async (handleA: ActorIdentifier, handleB: ActorIdentifier) => {
         abortController?.abort();
