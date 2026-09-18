@@ -3,96 +3,132 @@ import type { Did } from "@atcute/lexicons/syntax";
 import { isDid } from "@atcute/lexicons/syntax";
 import type { ActorIdentifier, ResourceUri } from "@atcute/lexicons/syntax";
 import * as v from "valibot";
-import { type ProfileView, rpc } from "../../shared/bsky";
+import { mapConcurrent, type ProfileView, rpc } from "../../shared/bsky";
 
 export { getProfile, getProfiles, type ProfileView, type ProfileViewDetailed } from "../../shared/bsky";
 
-// Queue-based rate limiter for Clearsky API (5 requests per second)
-// https://github.com/ClearskyApp06/clearskyservices/blob/main/api.md#rate-limiting
-const clearskyConcurrencyLimit = 5;
-const clearskyTimestamps: number[] = [];
-let clearskyQueue: Promise<void> = Promise.resolve();
+const constellationUrl = "https://constellation.microcosm.blue/xrpc/blue.microcosm.links.getBacklinks";
+const listItemCollection = "app.bsky.graph.listitem";
 
-function clearskyRateLimit(): Promise<void> {
-    clearskyQueue = clearskyQueue.then(async () => {
-        while (true) {
-            const now = Date.now();
-            while (clearskyTimestamps.length > 0 && clearskyTimestamps[0] < now - 1000) {
-                clearskyTimestamps.shift();
-            }
-            if (clearskyTimestamps.length < clearskyConcurrencyLimit) {
-                clearskyTimestamps.push(Date.now());
-                return;
-            }
-            await new Promise((resolve) => setTimeout(resolve, 1000 - (now - clearskyTimestamps[0])));
-        }
-    });
-    return clearskyQueue;
-}
+const ConstellationBacklinksSchema = v.object({
+    records: v.array(v.object({
+        did: v.custom<Did>(isDid),
+        collection: v.literal(listItemCollection),
+        rkey: v.string(),
+    })),
+    cursor: v.nullable(v.string()),
+});
 
-const ClearskyListsSchema = v.object({
-    data: v.object({
-        lists: v.array(v.object({
-            did: v.custom<Did>(isDid),
-            url: v.string(),
-            name: v.string(),
-            description: v.optional(v.nullable(v.string())),
-            date_added: v.optional(v.nullable(v.string())),
-        })),
+const ListItemRecordSchema = v.object({
+    value: v.object({
+        $type: v.literal(listItemCollection),
+        subject: v.custom<Did>(isDid),
+        list: v.string(),
+        createdAt: v.optional(v.string()),
     }),
 });
 
-type ClearskyList = v.InferOutput<typeof ClearskyListsSchema>["data"]["lists"][number];
+export interface ListMembership {
+    uri: ResourceUri;
+    addedAt?: string;
+}
 
-async function getClearskyListsPage(handle: string, page: number, signal?: AbortSignal): Promise<ClearskyList[]> {
-    await clearskyRateLimit();
-    const u = `https://api.clearsky.services/api/v1/anon/get-list/${encodeURIComponent(handle)}${
-        page ? `/${page + 1}` : ""
-    }`;
+export interface AtprotoList extends ListMembership {
+    did: Did;
+    url: string;
+    name: string;
+    description?: string;
+}
+
+function parseListUri(value: string): ResourceUri {
+    const match = /^at:\/\/([^/]+)\/app\.bsky\.graph\.list\/([^/]+)$/.exec(value);
+    if (!match || !isDid(match[1])) {
+        throw new Error(`Invalid list URI: ${value}`);
+    }
+    return value as ResourceUri;
+}
+
+async function getConstellationPage(
+    did: Did,
+    cursor?: string,
+    signal?: AbortSignal,
+): Promise<{ lists: ListMembership[]; cursor?: string; }> {
+    const u = new URL(constellationUrl);
+    u.searchParams.set("subject", did);
+    u.searchParams.set("source", `${listItemCollection}:subject`);
+    u.searchParams.set("limit", "100");
+    if (cursor) u.searchParams.set("cursor", cursor);
     const response = await fetch(u, { signal });
+    if (!response.ok) {
+        throw new Error(`Constellation request failed: ${response.status} ${response.statusText}`);
+    }
     const json = await response.json();
-    const parsed = v.parse(ClearskyListsSchema, json);
-    return parsed.data.lists;
+    const parsed = v.parse(ConstellationBacklinksSchema, json);
+    const listItems = await mapConcurrent(parsed.records, 10, async (record) => {
+        const recordUrl = new URL("https://public.api.bsky.app/xrpc/com.atproto.repo.getRecord");
+        recordUrl.searchParams.set("repo", record.did);
+        recordUrl.searchParams.set("collection", record.collection);
+        recordUrl.searchParams.set("rkey", record.rkey);
+        const recordResponse = await fetch(recordUrl, { signal });
+        if (recordResponse.status === 400 || recordResponse.status === 404) {
+            return undefined;
+        }
+        if (!recordResponse.ok) {
+            throw new Error(`List item request failed: ${recordResponse.status} ${recordResponse.statusText}`);
+        }
+        const listItem = v.parse(ListItemRecordSchema, await recordResponse.json()).value;
+        if (listItem.subject !== did) {
+            throw new Error(`List item subject did not match ${did}`);
+        }
+        return {
+            uri: parseListUri(listItem.list),
+            addedAt: listItem.createdAt,
+        } satisfies ListMembership;
+    });
+    const lists: ListMembership[] = [];
+    for (const item of listItems) {
+        if (item) lists.push(item);
+    }
+    return {
+        lists,
+        cursor: parsed.cursor ?? undefined,
+    };
 }
 
-export type { ClearskyList };
-
-export interface ClearskyListsResult {
-    lists: ClearskyList[];
+export interface ConstellationListsResult {
+    lists: ListMembership[];
     hasMore: boolean;
-    nextPage: number;
+    nextCursor?: string;
 }
 
-export async function getClearskyLists(
-    handle: string,
-    startPage = 0,
+export async function getConstellationLists(
+    did: Did,
+    startCursor: string | undefined,
     maxPages = 3,
     signal?: AbortSignal,
-): Promise<ClearskyListsResult> {
+): Promise<ConstellationListsResult> {
     const seen = new Set<string>();
-    const allLists: ClearskyList[] = [];
-    let hasMore = false;
+    const allLists: ListMembership[] = [];
+    let cursor = startCursor;
 
-    for (let page = startPage; page < startPage + maxPages; page++) {
-        const lists = await getClearskyListsPage(handle, page, signal);
+    for (let page = 0; page < maxPages; page++) {
+        const result = await getConstellationPage(did, cursor, signal);
+        const { lists } = result;
         for (const list of lists) {
-            if (!seen.has(list.url)) {
-                seen.add(list.url);
+            if (!seen.has(list.uri)) {
+                seen.add(list.uri);
                 allLists.push(list);
             }
         }
-        if (lists.length < 100) break;
-        if (page === startPage + maxPages - 1) {
-            hasMore = true;
-        }
+        cursor = result.cursor;
+        if (!cursor) break;
     }
 
-    return { lists: allLists, hasMore, nextPage: startPage + maxPages };
+    return { lists: allLists, hasMore: cursor !== undefined, nextCursor: cursor };
 }
 
-export function listAtUri(did: Did, url: string): ResourceUri {
-    const id = url.split("/").at(-1);
-    return `at://${did}/app.bsky.graph.list/${id}` as ResourceUri;
+export function listAtUri(list: AtprotoList): ResourceUri {
+    return list.uri;
 }
 
 export interface ListLabel {
@@ -100,17 +136,34 @@ export interface ListLabel {
     src: string;
 }
 
-export async function getBlueskyListPurpose(
-    did: Did,
-    url: string,
+export async function getBlueskyList(
+    membership: ListMembership,
     signal?: AbortSignal,
-): Promise<{ purpose: string; listItemCount?: number; latestItemAt?: string; labels?: ListLabel[]; }> {
-    const at = listAtUri(did, url);
-    const res = await ok(rpc.get("app.bsky.graph.getList", { params: { list: at, limit: 1 }, signal }));
+): Promise<{
+    list: AtprotoList;
+    purpose: string;
+    listItemCount?: number;
+    latestItemAt?: string;
+    labels?: ListLabel[];
+}> {
+    const res = await ok(rpc.get("app.bsky.graph.getList", {
+        params: { list: membership.uri, limit: 1 },
+        signal,
+    }));
     // The most recently added item is returned first; extract its timestamp from the TID rkey.
     const latestItemUri = res.items[0]?.uri;
     const latestItemAt = latestItemUri ? tidToDate(latestItemUri.split("/").at(-1)!) : undefined;
+    const listUri = parseListUri(res.list.uri);
+    const listId = listUri.split("/").at(-1)!;
     return {
+        list: {
+            ...membership,
+            uri: listUri,
+            did: res.list.creator.did,
+            url: `https://bsky.app/profile/${res.list.creator.did}/lists/${listId}`,
+            name: res.list.name,
+            description: res.list.description,
+        },
         purpose: res.list.purpose,
         listItemCount: res.list.listItemCount,
         latestItemAt,

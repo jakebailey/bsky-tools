@@ -20,22 +20,23 @@ import { HandleInput } from "../../shared/HandleInput";
 import { ProfileCard } from "../../shared/ProfileCard";
 import { RichText } from "../../shared/RichText";
 import {
+    type AtprotoList,
     checkListForFollows,
-    type ClearskyList,
-    getBlueskyListPurpose,
-    getClearskyLists,
+    getBlueskyList,
+    getConstellationLists,
     getFollows,
     getProfile,
     getProfiles,
     listAtUri,
     type ListLabel,
+    type ListMembership,
     type ProfileView,
     type ProfileViewDetailed,
 } from "./apis";
 
 interface ListEntry {
     profile: ProfileViewDetailed;
-    list: ClearskyList;
+    list: AtprotoList;
     listItemCount?: number;
     addedAt?: string;
     latestItemAt?: string;
@@ -43,33 +44,30 @@ interface ListEntry {
 }
 
 async function processLists(
-    clearskyLists: ClearskyList[],
+    memberships: ListMembership[],
     onProgress?: (checked: number, total: number) => void,
     signal?: AbortSignal,
 ): Promise<ListEntry[]> {
     let checked = 0;
-    const results = await mapConcurrent(clearskyLists, 10, async (list) => {
+    const results = await mapConcurrent(memberships, 10, async (membership) => {
         try {
-            const { purpose, listItemCount, latestItemAt, labels } = await getBlueskyListPurpose(
-                list.did,
-                list.url,
-                signal,
-            );
+            const { list, purpose, listItemCount, latestItemAt, labels } = await getBlueskyList(membership, signal);
             return { list, purpose, listItemCount, latestItemAt, labels, ok: true as const };
         } catch {
-            return { list, purpose: "", listItemCount: undefined, ok: false as const };
+            return { ok: false as const };
         } finally {
             checked++;
-            onProgress?.(checked, clearskyLists.length);
+            onProgress?.(checked, memberships.length);
         }
     });
 
-    const modClearskyLists = results
-        .filter((r) => r.ok && r.purpose === "app.bsky.graph.defs#modlist");
+    const modLists = results.flatMap((result) =>
+        result.ok && result.purpose === "app.bsky.graph.defs#modlist" ? [result] : []
+    );
 
     let profiles: Map<string, ProfileViewDetailed> | undefined;
     try {
-        profiles = await getProfiles(modClearskyLists.map((r) => r.list.did), signal);
+        profiles = await getProfiles(modLists.map((r) => r.list.did), signal);
     } catch {
         // ignore
     }
@@ -79,7 +77,7 @@ async function processLists(
     }
 
     const lists: ListEntry[] = [];
-    for (const r of modClearskyLists) {
+    for (const r of modLists) {
         const listProfile = profiles.get(r.list.did);
         if (!listProfile || listProfile.handle === "handle.invalid") {
             continue;
@@ -88,7 +86,7 @@ async function processLists(
             profile: listProfile,
             list: r.list,
             listItemCount: r.listItemCount,
-            addedAt: r.list.date_added ?? undefined,
+            addedAt: r.list.addedAt,
             latestItemAt: r.latestItemAt,
             labels: r.labels,
         });
@@ -104,23 +102,34 @@ async function doWork(
 ) {
     onProgress("Resolving profile...");
     const profile = await getProfile(queryHandle, signal);
-    onProgress("Fetching lists from Clearsky...", profile);
-    const clearskyResult = await getClearskyLists(profile.handle, 0, 3, signal);
-    onProgress(`Checking ${clearskyResult.lists.length} lists...`, profile);
-    const lists = await processLists(clearskyResult.lists, (checked, total) => {
+    onProgress("Fetching list memberships from Constellation...", profile);
+    const constellationResult = await getConstellationLists(profile.did, undefined, 3, signal);
+    onProgress(`Checking ${constellationResult.lists.length} lists...`, profile);
+    const lists = await processLists(constellationResult.lists, (checked, total) => {
         onProgress(`Checking lists... ${checked}/${total}`, profile);
     }, signal);
     onProgress("Fetching list creator profiles...", profile);
 
     lists.sort((a, b) => (b.profile.followersCount ?? 0) - (a.profile.followersCount ?? 0));
 
-    return { profile, lists, hasMore: clearskyResult.hasMore, nextPage: clearskyResult.nextPage };
+    return {
+        profile,
+        lists,
+        hasMore: constellationResult.hasMore,
+        nextCursor: constellationResult.nextCursor,
+    };
 }
 
 type PageState =
     | { status: "idle"; }
     | { status: "loading"; progress: string; profile?: ProfileViewDetailed; }
-    | { status: "done"; profile: ProfileViewDetailed; lists: ListEntry[]; hasMore: boolean; nextPage: number; }
+    | {
+        status: "done";
+        profile: ProfileViewDetailed;
+        lists: ListEntry[];
+        hasMore: boolean;
+        nextCursor?: string;
+    }
     | { status: "error"; error: string; };
 
 const Page: Component = () => {
@@ -172,7 +181,7 @@ const Page: Component = () => {
         }
     };
 
-    const checkList = async (list: ClearskyList) => {
+    const checkList = async (list: AtprotoList) => {
         const follows = viewerFollows();
         if (!follows) return;
         const key = list.url;
@@ -181,7 +190,7 @@ const Page: Component = () => {
             [key]: { status: "checking", checked: 0, matches: [] },
         }));
         try {
-            const uri = listAtUri(list.did, list.url);
+            const uri = listAtUri(list);
             const s = state();
             const excludeDid = s.status === "done" ? s.profile.did : undefined;
             await checkListForFollows(uri, follows, excludeDid, (checked, matches) => {
@@ -226,7 +235,7 @@ const Page: Component = () => {
                 profile: result.profile,
                 lists: result.lists,
                 hasMore: result.hasMore,
-                nextPage: result.nextPage,
+                nextCursor: result.nextCursor,
             });
         } catch (e) {
             if (controller.signal.aborted) return;
@@ -249,16 +258,16 @@ const Page: Component = () => {
         if (s.status !== "done" || loadingMore()) return;
         setLoadingMore(true);
         try {
-            const result = await getClearskyLists(
-                s.profile.handle,
-                s.nextPage,
+            const result = await getConstellationLists(
+                s.profile.did,
+                s.nextCursor,
                 3,
                 abortController?.signal,
             );
             const newLists = await processLists(result.lists, undefined, abortController?.signal);
             newLists.sort((a, b) => (b.profile.followersCount ?? 0) - (a.profile.followersCount ?? 0));
             setExtraLists((prev) => [...prev, ...newLists]);
-            setState({ ...s, hasMore: result.hasMore, nextPage: result.nextPage });
+            setState({ ...s, hasMore: result.hasMore, nextCursor: result.nextCursor });
         } finally {
             setLoadingMore(false);
         }
@@ -513,10 +522,10 @@ const Page: Component = () => {
             </Switch>
 
             <p class="footer">
-                This site queries the Bluesky and Clearsky APIs directly in your browser. No data is stored. Note that
-                all content is generated from those APIs; I can't be responsible for anything that shows up here, and
-                list creator follower count is not necessarily a good measure of quality or trustworthiness. Use these
-                lists at your own risk.
+                This site queries the Bluesky and Microcosm Constellation APIs directly in your browser. No data is
+                stored. Note that all content is generated from those APIs; I can't be responsible for anything that
+                shows up here, and list creator follower count is not necessarily a good measure of quality or
+                trustworthiness. Use these lists at your own risk.
             </p>
         </div>
     );
