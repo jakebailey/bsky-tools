@@ -13,27 +13,21 @@ import {
 
 export { getProfile, getProfiles, type ProfileView, type ProfileViewDetailed } from "../../shared/bsky";
 
-const constellationUrl = "https://constellation.microcosm.blue/xrpc/blue.microcosm.links.getBacklinks";
+const constellationManyToManyUrl = "https://constellation.microcosm.blue/xrpc/blue.microcosm.links.getManyToMany";
 const constellationManyToManyCountsUrl =
     "https://constellation.microcosm.blue/xrpc/blue.microcosm.links.getManyToManyCounts";
 const listItemCollection = "app.bsky.graph.listitem";
 
-const ConstellationBacklinksSchema = v.object({
-    records: v.array(v.object({
-        did: v.custom<Did>(isDid),
-        collection: v.literal(listItemCollection),
-        rkey: v.string(),
+const ConstellationManyToManySchema = v.object({
+    items: v.array(v.object({
+        linkRecord: v.object({
+            did: v.custom<Did>(isDid),
+            collection: v.literal(listItemCollection),
+            rkey: v.string(),
+        }),
+        otherSubject: v.string(),
     })),
-    cursor: v.nullable(v.string()),
-});
-
-const ListItemRecordSchema = v.object({
-    value: v.object({
-        $type: v.literal(listItemCollection),
-        subject: v.custom<Did>(isDid),
-        list: v.string(),
-        createdAt: v.optional(v.string()),
-    }),
+    cursor: v.optional(v.nullable(v.string())),
 });
 
 const ConstellationManyToManyCountsSchema = v.object({
@@ -70,41 +64,26 @@ async function getConstellationPage(
     cursor?: string,
     signal?: AbortSignal,
 ): Promise<{ lists: ListMembership[]; cursor?: string; }> {
-    const u = new URL(constellationUrl);
+    const u = new URL(constellationManyToManyUrl);
     u.searchParams.set("subject", did);
     u.searchParams.set("source", `${listItemCollection}:subject`);
+    u.searchParams.set("pathToOther", "list");
     u.searchParams.set("limit", "100");
     if (cursor) u.searchParams.set("cursor", cursor);
     const response = await fetch(u, { signal });
     if (!response.ok) {
         throw new Error(`Constellation request failed: ${response.status} ${response.statusText}`);
     }
-    const json = await response.json();
-    const parsed = v.parse(ConstellationBacklinksSchema, json);
-    const listItems = await mapConcurrent(parsed.records, 10, async (record) => {
-        const recordUrl = new URL("https://public.api.bsky.app/xrpc/com.atproto.repo.getRecord");
-        recordUrl.searchParams.set("repo", record.did);
-        recordUrl.searchParams.set("collection", record.collection);
-        recordUrl.searchParams.set("rkey", record.rkey);
-        const recordResponse = await fetch(recordUrl, { signal });
-        if (recordResponse.status === 400 || recordResponse.status === 404) {
-            return undefined;
-        }
-        if (!recordResponse.ok) {
-            throw new Error(`List item request failed: ${recordResponse.status} ${recordResponse.statusText}`);
-        }
-        const listItem = v.parse(ListItemRecordSchema, await recordResponse.json()).value;
-        if (listItem.subject !== did) {
-            throw new Error(`List item subject did not match ${did}`);
-        }
-        return {
-            uri: parseListUri(listItem.list),
-            addedAt: listItem.createdAt,
-        } satisfies ListMembership;
-    });
+    const parsed = v.parse(ConstellationManyToManySchema, await response.json());
     const lists: ListMembership[] = [];
-    for (const item of listItems) {
-        if (item) lists.push(item);
+    for (const item of parsed.items) {
+        const uri = parseListUri(item.otherSubject);
+        const listDid = uri.slice("at://".length).split("/", 1)[0];
+        if (listDid !== item.linkRecord.did) continue;
+        lists.push({
+            uri,
+            addedAt: tidToDate(item.linkRecord.rkey),
+        });
     }
     return {
         lists,

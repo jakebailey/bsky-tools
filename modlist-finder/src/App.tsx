@@ -66,7 +66,7 @@ async function processLists(
 
     let profiles: Map<string, ProfileViewDetailed> | undefined;
     try {
-        profiles = await getProfiles(modLists.map((r) => r.list.did), signal);
+        profiles = await getProfiles([...new Set(modLists.map((r) => r.list.did))], signal);
     } catch {
         // ignore
     }
