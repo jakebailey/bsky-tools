@@ -3,11 +3,19 @@ import type { Did } from "@atcute/lexicons/syntax";
 import { isDid } from "@atcute/lexicons/syntax";
 import type { ActorIdentifier, ResourceUri } from "@atcute/lexicons/syntax";
 import * as v from "valibot";
-import { mapConcurrent, type ProfileView, rpc } from "../../shared/bsky";
+import {
+    chunked,
+    getProfiles as getProfilesShared,
+    mapConcurrent,
+    type ProfileViewDetailed,
+    rpc,
+} from "../../shared/bsky";
 
 export { getProfile, getProfiles, type ProfileView, type ProfileViewDetailed } from "../../shared/bsky";
 
 const constellationUrl = "https://constellation.microcosm.blue/xrpc/blue.microcosm.links.getBacklinks";
+const constellationManyToManyCountsUrl =
+    "https://constellation.microcosm.blue/xrpc/blue.microcosm.links.getManyToManyCounts";
 const listItemCollection = "app.bsky.graph.listitem";
 
 const ConstellationBacklinksSchema = v.object({
@@ -26,6 +34,15 @@ const ListItemRecordSchema = v.object({
         list: v.string(),
         createdAt: v.optional(v.string()),
     }),
+});
+
+const ConstellationManyToManyCountsSchema = v.object({
+    counts_by_other_subject: v.array(v.object({
+        subject: v.custom<Did>(isDid),
+        total: v.number(),
+        distinct: v.number(),
+    })),
+    cursor: v.optional(v.nullable(v.string())),
 });
 
 export interface ListMembership {
@@ -206,25 +223,60 @@ export async function checkListForFollows(
     listUri: ResourceUri,
     followDids: Set<string>,
     excludeDid: string | undefined,
-    onProgress: (checked: number, matches: ProfileView[]) => void,
+    onProgress: (checked: number, matches: ProfileViewDetailed[]) => void,
     signal?: AbortSignal,
-): Promise<ProfileView[]> {
-    const matches: ProfileView[] = [];
-    let cursor: string | undefined;
+): Promise<ProfileViewDetailed[]> {
+    const candidateDids: Did[] = [];
+    for (const did of followDids) {
+        if (did === excludeDid) continue;
+        if (!isDid(did)) {
+            throw new Error(`Invalid followed DID: ${did}`);
+        }
+        candidateDids.push(did);
+    }
+
+    const matches = new Map<Did, ProfileViewDetailed>();
     let checked = 0;
-    do {
-        const res = await ok(rpc.get("app.bsky.graph.getList", {
-            params: { list: listUri, limit: 100, cursor },
-            signal,
-        }));
-        for (const item of res.items) {
-            checked++;
-            if (item.subject.did !== excludeDid && followDids.has(item.subject.did)) {
-                matches.push(item.subject);
+    await mapConcurrent(chunked(candidateDids, 100), 5, async (batch) => {
+        const u = new URL(constellationManyToManyCountsUrl);
+        u.searchParams.set("subject", listUri);
+        u.searchParams.set("source", `${listItemCollection}:list`);
+        u.searchParams.set("pathToOther", "subject");
+        u.searchParams.set("limit", batch.length.toString());
+        for (const did of batch) {
+            u.searchParams.append("otherSubject", did);
+        }
+
+        const response = await fetch(u, { signal });
+        if (!response.ok) {
+            throw new Error(`Constellation request failed: ${response.status} ${response.statusText}`);
+        }
+        const parsed = v.parse(ConstellationManyToManyCountsSchema, await response.json());
+        if (parsed.cursor) {
+            throw new Error("Constellation returned an unexpected cursor for a bounded membership query");
+        }
+
+        const batchSet = new Set(batch);
+        const matchDids: Did[] = [];
+        for (const count of parsed.counts_by_other_subject) {
+            if (!batchSet.has(count.subject)) {
+                throw new Error(`Constellation returned an unexpected list member: ${count.subject}`);
+            }
+            if (count.total > 0) {
+                matchDids.push(count.subject);
             }
         }
-        onProgress(checked, matches);
-        cursor = res.cursor;
-    } while (cursor);
-    return matches;
+
+        if (matchDids.length > 0) {
+            const profiles = await getProfilesShared(matchDids, signal);
+            for (const did of matchDids) {
+                const profile = profiles.get(did);
+                if (profile) matches.set(did, profile);
+            }
+        }
+
+        checked += batch.length;
+        onProgress(checked, [...matches.values()]);
+    });
+    return [...matches.values()];
 }

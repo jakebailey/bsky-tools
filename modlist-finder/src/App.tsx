@@ -30,7 +30,6 @@ import {
     listAtUri,
     type ListLabel,
     type ListMembership,
-    type ProfileView,
     type ProfileViewDetailed,
 } from "./apis";
 
@@ -152,9 +151,10 @@ const Page: Component = () => {
     const [followsError, setFollowsError] = createSignal<string>();
     const [listChecks, setListChecks] = createSignal<
         Record<string, {
-            status: "checking" | "done";
+            status: "checking" | "done" | "error";
             checked: number;
-            matches: ProfileView[];
+            matches: ProfileViewDetailed[];
+            error?: string;
         }>
     >({});
     let followsAbort: AbortController | undefined;
@@ -207,7 +207,11 @@ const Page: Component = () => {
             if (!(e instanceof DOMException && e.name === "AbortError")) {
                 setListChecks((prev) => ({
                     ...prev,
-                    [key]: { ...prev[key], status: "done" },
+                    [key]: {
+                        ...prev[key],
+                        status: "error",
+                        error: e instanceof Error ? e.message : String(e),
+                    },
                 }));
             }
         }
@@ -464,11 +468,16 @@ const Page: Component = () => {
                                                                 <>
                                                                     <Show when={c().status === "checking"}>
                                                                         <span class="check-progress">
-                                                                            Checked {c().checked.toLocaleString()}...
+                                                                            Checked {c().checked.toLocaleString()}{" "}
+                                                                            follows...
                                                                         </span>
                                                                     </Show>
+                                                                    <Show when={c().status === "error"}>
+                                                                        <span class="error">{c().error}</span>
+                                                                    </Show>
                                                                     <Show
-                                                                        when={c().matches.length > 0}
+                                                                        when={c().status !== "error"
+                                                                            && c().matches.length > 0}
                                                                         fallback={
                                                                             <Show when={c().status === "done"}>
                                                                                 <span class="no-follows-found">
