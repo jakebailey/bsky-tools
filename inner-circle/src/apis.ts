@@ -4,6 +4,7 @@ import {
     getAllFollows,
     getProfile,
     getProfiles,
+    getRelationships,
     type ProfileView,
     type ProfileViewDetailed,
 } from "../../shared/bsky";
@@ -14,6 +15,7 @@ export {
     getAllFollows,
     getProfile,
     getProfiles,
+    getRelationships,
     type ProfileView,
     type ProfileViewDetailed,
 } from "../../shared/bsky";
@@ -21,6 +23,7 @@ export {
 export interface ProgressInfo {
     followers?: number;
     follows?: number;
+    relationships?: number;
     mutuals?: number;
 }
 
@@ -37,25 +40,50 @@ export async function fetchMutualsSorted(
 ): Promise<{ profile: ProfileViewDetailed; mutuals: MutualProfile[]; }> {
     const profile = preResolved ?? await getProfile(actor, signal);
 
-    // Fetch follows and followers in parallel
     const progress: ProgressInfo = {};
-    const [follows, followers] = await Promise.all([
-        getAllFollows(actor, (info) => {
-            progress.follows = info.current;
-            onProgress?.({ ...progress });
-        }, signal),
-        getAllFollowers(actor, (info) => {
-            progress.followers = info.current;
-            onProgress?.({ ...progress });
-        }, signal),
-    ]);
+    const reportFollows = (info: { current: number; }) => {
+        progress.follows = info.current;
+        onProgress?.({ ...progress });
+    };
+    const useRelationshipChecks = profile.followsCount != null
+        && profile.followersCount != null
+        && Math.ceil(profile.followsCount / 30) < Math.ceil(profile.followersCount / 100);
 
-    // Find mutuals: people you follow who also follow you back
-    const mutualDids: ActorIdentifier[] = [];
-    for (const did of follows.keys()) {
-        if (followers.has(did)) {
-            mutualDids.push(did);
+    let follows: Map<ActorIdentifier, ProfileView>;
+    let mutualDids: ActorIdentifier[];
+    if (useRelationshipChecks) {
+        follows = await getAllFollows(actor, reportFollows, signal);
+        const relationships = await getRelationships(
+            profile.did,
+            [...follows.keys()],
+            (info) => {
+                progress.relationships = info.current;
+                onProgress?.({ ...progress });
+            },
+            signal,
+        );
+        mutualDids = [...relationships.values()]
+            .filter((relationship) => relationship.followedBy !== undefined)
+            .map((relationship) => relationship.did);
+    } else {
+        const [allFollows, followers] = await Promise.all([
+            getAllFollows(actor, reportFollows, signal),
+            getAllFollowers(actor, (info) => {
+                progress.followers = info.current;
+                onProgress?.({ ...progress });
+            }, signal),
+        ]);
+        follows = allFollows;
+        mutualDids = [];
+        for (const did of follows.keys()) {
+            if (followers.has(did)) {
+                mutualDids.push(did);
+            }
         }
+    }
+
+    if (follows.size === 0) {
+        mutualDids = [];
     }
     onProgress?.({ ...progress, mutuals: mutualDids.length });
 

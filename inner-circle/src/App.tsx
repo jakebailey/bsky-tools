@@ -118,10 +118,15 @@ const Page: Component = () => {
 
     const formatProgress = (progress: ProgressInfo | null, handle: string) => {
         if (!progress) return `Resolving ${handle}...`;
-        if (progress.followers == null && progress.follows == null) return `Fetching network for ${handle}...`;
+        if (progress.followers == null && progress.follows == null && progress.relationships == null) {
+            return `Fetching network for ${handle}...`;
+        }
         const parts = [];
         if (progress.followers != null) parts.push(`${progress.followers.toLocaleString()} followers`);
         if (progress.follows != null) parts.push(`${progress.follows.toLocaleString()} following`);
+        if (progress.relationships != null) {
+            parts.push(`${progress.relationships.toLocaleString()} follow relationships checked`);
+        }
         if (progress.mutuals != null) parts.push(`${progress.mutuals.toLocaleString()} mutuals found`);
         return parts.join(", ");
     };

@@ -21,7 +21,7 @@ import { ProfileCard } from "../../shared/ProfileCard";
 import {
     type ActorIdentifier,
     computeOverlap,
-    fetchNetworkData,
+    fetchOverlapNetworkData,
     getProfile,
     getProfiles,
     type OverlapResult,
@@ -172,36 +172,29 @@ const Page: Component = () => {
                 return { ...prev, profileA, profileB } as CompareState & { status: "loading"; };
             });
 
-            const [dataA, dataB] = await Promise.all([
-                fetchNetworkData(
-                    handleA,
-                    (info) => {
-                        if (signal.aborted) return;
-                        setState((prev) => {
-                            if (prev.status !== "loading") return prev;
-                            return { ...prev, progressA: info } as CompareState & {
-                                status: "loading";
-                            };
-                        });
-                    },
-                    profileA,
-                    signal,
-                ),
-                fetchNetworkData(
-                    handleB,
-                    (info) => {
-                        if (signal.aborted) return;
-                        setState((prev) => {
-                            if (prev.status !== "loading") return prev;
-                            return { ...prev, progressB: info } as CompareState & {
-                                status: "loading";
-                            };
-                        });
-                    },
-                    profileB,
-                    signal,
-                ),
-            ]);
+            const [dataA, dataB] = await fetchOverlapNetworkData(
+                profileA,
+                profileB,
+                (info) => {
+                    if (signal.aborted) return;
+                    setState((prev) => {
+                        if (prev.status !== "loading") return prev;
+                        return { ...prev, progressA: info } as CompareState & {
+                            status: "loading";
+                        };
+                    });
+                },
+                (info) => {
+                    if (signal.aborted) return;
+                    setState((prev) => {
+                        if (prev.status !== "loading") return prev;
+                        return { ...prev, progressB: info } as CompareState & {
+                            status: "loading";
+                        };
+                    });
+                },
+                signal,
+            );
 
             if (signal.aborted) return;
 
@@ -277,10 +270,15 @@ const Page: Component = () => {
 
     const formatProgress = (info: ProgressInfo | null, handle: string) => {
         if (!info) return `${handle}: resolving...`;
-        if (info.followers == null && info.follows == null) return `${handle}: fetching network...`;
+        if (info.followers == null && info.follows == null && info.relationships == null) {
+            return `${handle}: fetching network...`;
+        }
         const parts = [];
         if (info.followers != null) parts.push(`${info.followers.toLocaleString()} followers`);
         if (info.follows != null) parts.push(`${info.follows.toLocaleString()} following`);
+        if (info.relationships != null) {
+            parts.push(`${info.relationships.toLocaleString()} follower relationships checked`);
+        }
         return `${handle}: ${parts.join(", ")}`;
     };
 

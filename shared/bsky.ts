@@ -1,4 +1,4 @@
-import type { AppBskyActorDefs } from "@atcute/bluesky";
+import type { AppBskyActorDefs, AppBskyGraphDefs } from "@atcute/bluesky";
 import { Client, ok, simpleFetchHandler } from "@atcute/client";
 import { isActorIdentifier } from "@atcute/lexicons/syntax";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
@@ -6,6 +6,7 @@ import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 export type { ActorIdentifier } from "@atcute/lexicons/syntax";
 export type ProfileView = AppBskyActorDefs.ProfileView;
 export type ProfileViewDetailed = AppBskyActorDefs.ProfileViewDetailed;
+export type Relationship = AppBskyGraphDefs.Relationship;
 
 export const rpc = new Client({
     handler: simpleFetchHandler({ service: "https://public.api.bsky.app" }),
@@ -83,6 +84,31 @@ export async function getProfiles(
         }
     }
     return map;
+}
+
+export async function getRelationships(
+    actor: ActorIdentifier,
+    others: ActorIdentifier[],
+    onProgress?: (info: { current: number; total: number; }) => void,
+    signal?: AbortSignal,
+): Promise<Map<ActorIdentifier, Relationship>> {
+    const uniqueOthers = [...new Set(others)];
+    const relationships = new Map<ActorIdentifier, Relationship>();
+    let checked = 0;
+    await mapConcurrent(chunked(uniqueOthers, 30), 5, async (chunk) => {
+        const res = await ok(rpc.get("app.bsky.graph.getRelationships", {
+            params: { actor, others: chunk },
+            signal,
+        }));
+        for (const relationship of res.relationships) {
+            if ("did" in relationship) {
+                relationships.set(relationship.did, relationship);
+            }
+        }
+        checked += chunk.length;
+        onProgress?.({ current: checked, total: uniqueOthers.length });
+    });
+    return relationships;
 }
 
 const paginate = async (

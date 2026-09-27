@@ -4,6 +4,7 @@ import {
     getAllFollows,
     getProfile,
     getProfiles,
+    getRelationships,
     type ProfileView,
     type ProfileViewDetailed,
 } from "../../shared/bsky";
@@ -14,6 +15,7 @@ export {
     getAllFollows,
     getProfile,
     getProfiles,
+    getRelationships,
     type ProfileView,
     type ProfileViewDetailed,
 } from "../../shared/bsky";
@@ -22,11 +24,13 @@ export interface ProgressInfo {
     profile?: ProfileViewDetailed;
     followers?: number;
     follows?: number;
+    relationships?: number;
 }
 
 export interface NetworkData {
     profile: ProfileViewDetailed;
     followers: Map<string, ProfileView>;
+    followersCount: number;
     follows: Map<string, ProfileView>;
 }
 
@@ -46,26 +50,103 @@ export interface OverlapResult {
     followsB: number;
 }
 
-export const fetchNetworkData = async (
-    actor: ActorIdentifier,
-    onProgress?: (info: ProgressInfo) => void,
-    preResolved?: ProfileViewDetailed,
+export const fetchOverlapNetworkData = async (
+    profileA: ProfileViewDetailed,
+    profileB: ProfileViewDetailed,
+    onProgressA?: (info: ProgressInfo) => void,
+    onProgressB?: (info: ProgressInfo) => void,
     signal?: AbortSignal,
-): Promise<NetworkData> => {
-    const profile = preResolved ?? await getProfile(actor, signal);
-    onProgress?.({ profile });
-    const progress: ProgressInfo = { profile };
-    const [followers, follows] = await Promise.all([
-        getAllFollowers(actor, (info) => {
-            progress.followers = info.current;
-            onProgress?.({ ...progress });
+): Promise<[NetworkData, NetworkData]> => {
+    const progressA: ProgressInfo = { profile: profileA };
+    const progressB: ProgressInfo = { profile: profileB };
+    const aHasFewerFollowers = (profileA.followersCount ?? Number.POSITIVE_INFINITY)
+        <= (profileB.followersCount ?? Number.POSITIVE_INFINITY);
+    const smallerProfile = aHasFewerFollowers ? profileA : profileB;
+    const largerProfile = aHasFewerFollowers ? profileB : profileA;
+    const smallerProgress = aHasFewerFollowers ? progressA : progressB;
+    const largerProgress = aHasFewerFollowers ? progressB : progressA;
+    const reportSmaller = aHasFewerFollowers ? onProgressA : onProgressB;
+    const reportLarger = aHasFewerFollowers ? onProgressB : onProgressA;
+    const estimatedCandidates = (smallerProfile.followersCount ?? Number.POSITIVE_INFINITY)
+        + (profileA.followsCount ?? Number.POSITIVE_INFINITY)
+        + (profileB.followsCount ?? Number.POSITIVE_INFINITY);
+    const useRelationshipChecks = Math.ceil(estimatedCandidates / 30)
+        < Math.ceil((largerProfile.followersCount ?? 0) / 100);
+
+    if (!useRelationshipChecks) {
+        const [followersA, followsA, followersB, followsB] = await Promise.all([
+            getAllFollowers(profileA.did, (info) => {
+                progressA.followers = info.current;
+                onProgressA?.({ ...progressA });
+            }, signal),
+            getAllFollows(profileA.did, (info) => {
+                progressA.follows = info.current;
+                onProgressA?.({ ...progressA });
+            }, signal),
+            getAllFollowers(profileB.did, (info) => {
+                progressB.followers = info.current;
+                onProgressB?.({ ...progressB });
+            }, signal),
+            getAllFollows(profileB.did, (info) => {
+                progressB.follows = info.current;
+                onProgressB?.({ ...progressB });
+            }, signal),
+        ]);
+        return [
+            { profile: profileA, followers: followersA, followersCount: followersA.size, follows: followsA },
+            { profile: profileB, followers: followersB, followersCount: followersB.size, follows: followsB },
+        ];
+    }
+
+    const [followsA, followsB, smallerFollowers] = await Promise.all([
+        getAllFollows(profileA.did, (info) => {
+            progressA.follows = info.current;
+            onProgressA?.({ ...progressA });
         }, signal),
-        getAllFollows(actor, (info) => {
-            progress.follows = info.current;
-            onProgress?.({ ...progress });
+        getAllFollows(profileB.did, (info) => {
+            progressB.follows = info.current;
+            onProgressB?.({ ...progressB });
+        }, signal),
+        getAllFollowers(smallerProfile.did, (info) => {
+            smallerProgress.followers = info.current;
+            reportSmaller?.({ ...smallerProgress });
         }, signal),
     ]);
-    return { profile, followers, follows };
+
+    const candidateProfiles = new Map<string, ProfileView>([
+        ...smallerFollowers,
+        ...followsA,
+        ...followsB,
+    ]);
+    const relationships = await getRelationships(
+        largerProfile.did,
+        [...candidateProfiles.keys()] as ActorIdentifier[],
+        (info) => {
+            largerProgress.relationships = info.current;
+            reportLarger?.({ ...largerProgress });
+        },
+        signal,
+    );
+    const largerFollowers = new Map<string, ProfileView>();
+    for (const relationship of relationships.values()) {
+        if (relationship.followedBy === undefined) continue;
+        const candidate = candidateProfiles.get(relationship.did);
+        if (candidate) largerFollowers.set(relationship.did, candidate);
+    }
+
+    const smallerData = {
+        profile: smallerProfile,
+        followers: smallerFollowers,
+        followersCount: smallerFollowers.size,
+        follows: aHasFewerFollowers ? followsA : followsB,
+    };
+    const largerData = {
+        profile: largerProfile,
+        followers: largerFollowers,
+        followersCount: largerProfile.followersCount ?? largerFollowers.size,
+        follows: aHasFewerFollowers ? followsB : followsA,
+    };
+    return aHasFewerFollowers ? [smallerData, largerData] : [largerData, smallerData];
 };
 
 export const computeOverlap = (a: NetworkData, b: NetworkData): OverlapResult => {
@@ -138,8 +219,8 @@ export const computeOverlap = (a: NetworkData, b: NetworkData): OverlapResult =>
         onlyBFollows,
         missingMutualsA,
         missingMutualsB,
-        followersA: a.followers.size,
-        followersB: b.followers.size,
+        followersA: a.followersCount,
+        followersB: b.followersCount,
         followsA: a.follows.size,
         followsB: b.follows.size,
     };
