@@ -5,6 +5,7 @@ import { mapConcurrent, type ProfileView } from "../../shared/bsky";
 
 const plcDirectory = "https://plc.directory";
 const miniDocUrl = "https://slingshot.microcosm.blue/xrpc/blue.microcosm.identity.resolveMiniDoc";
+const backlinksUrl = "https://constellation.microcosm.blue/xrpc/blue.microcosm.links.getBacklinks";
 const blockCollection = "app.bsky.graph.block";
 const scanConcurrency = 12;
 const requestTimeout = 8_000;
@@ -22,6 +23,11 @@ const BlockPage = v.object({
     cursor: v.optional(v.string()),
 });
 
+const BacklinkPage = v.object({
+    records: v.array(v.object({ did: v.custom<Did>(isDid) })),
+    cursor: v.nullish(v.string()),
+});
+
 export interface BlockPair {
     first: ProfileView;
     second: ProfileView;
@@ -36,16 +42,11 @@ export interface UncheckedAccount {
 
 export interface ScanProgress {
     checked: number;
+    indexed: number;
     total: number;
     pages: number;
     pairs: BlockPair[];
     unchecked: UncheckedAccount[];
-}
-
-function getPairHandles(pair: BlockPair): [string, string] {
-    return pair.first.handle.localeCompare(pair.second.handle) <= 0
-        ? [pair.first.handle, pair.second.handle]
-        : [pair.second.handle, pair.first.handle];
 }
 
 function wait(milliseconds: number, signal?: AbortSignal): Promise<void> {
@@ -136,15 +137,56 @@ async function resolvePds(did: Did, readJson: ReadJson): Promise<URL> {
     }
 
     if (typeof endpoint !== "string") throw new Error("No data server listed for the account");
-    const pds = new URL(endpoint);
-    // The endpoint comes from a public DID document. Send only credential-free reads to HTTPS DNS hosts.
-    if (
-        pds.protocol !== "https:" || pds.username || pds.password || pds.pathname !== "/" || pds.search || pds.hash
-        || !/\.[a-z][a-z0-9-]*$/i.test(pds.hostname) || /\.(localhost|local|internal)$/i.test(pds.hostname)
-    ) {
-        throw new Error("Invalid public HTTPS data server endpoint");
+    return new URL(endpoint);
+}
+
+function isBlueskyPds(pds: URL): boolean {
+    return pds.protocol === "https:" && !pds.port && !pds.username && !pds.password && pds.pathname === "/"
+        && !pds.search && !pds.hash
+        && /^(?:[a-z0-9-]+\.){1,2}host\.bsky\.network$/.test(pds.hostname);
+}
+
+function batchIndexAuthors(profiles: ProfileView[]): ProfileView[][] {
+    const batches: ProfileView[][] = [];
+    let batch: ProfileView[] = [];
+    let length = 0;
+    for (const profile of profiles) {
+        const size = new URLSearchParams({ did: profile.did }).toString().length + 1;
+        if (length + size > 6_000 && batch.length) {
+            batches.push(batch);
+            batch = [];
+            length = 0;
+        }
+        batch.push(profile);
+        length += size;
     }
-    return pds;
+    if (batch.length) batches.push(batch);
+    return batches;
+}
+
+function advanceCursor(url: URL, seen: Set<string>, cursor: string | null | undefined): boolean {
+    if (!cursor) return false;
+    if (seen.has(cursor)) throw new Error(`${url.hostname} returned a repeated block page cursor`);
+    seen.add(cursor);
+    url.searchParams.set("cursor", cursor);
+    return true;
+}
+
+function addBlock(pairs: Map<string, BlockPair>, blocker: ProfileView, blocked: ProfileView): boolean {
+    if (blocker.did === blocked.did) return false;
+    const blockerFirst = blocker.did < blocked.did;
+    const first = blockerFirst ? blocker : blocked;
+    const second = blockerFirst ? blocked : blocker;
+    const key = `${first.did}\0${second.did}`;
+    const previous = pairs.get(key);
+    if (blockerFirst ? previous?.firstBlocksSecond : previous?.secondBlocksFirst) return false;
+    pairs.set(key, {
+        first,
+        second,
+        firstBlocksSecond: blockerFirst || (previous?.firstBlocksSecond ?? false),
+        secondBlocksFirst: !blockerFirst || (previous?.secondBlocksFirst ?? false),
+    });
+    return true;
 }
 
 export async function findBlockPairs(
@@ -152,68 +194,101 @@ export async function findBlockPairs(
     onProgress?: (progress: ScanProgress) => void,
     signal?: AbortSignal,
 ): Promise<ScanProgress> {
+    const profiles = [...followed.values()];
     const pairs = new Map<string, BlockPair>();
     const readJson = createJsonReader(signal);
     const total = followed.size;
+    const fallback: ProfileView[] = [];
     let checked = 0;
+    let indexed = 0;
     let pages = 0;
-    let sortedPairs: BlockPair[] = [];
+    let currentPairs: BlockPair[] = [];
     let unchecked: UncheckedAccount[] = [];
 
-    const snapshot = (): ScanProgress => ({ checked, total, pages, pairs: sortedPairs, unchecked });
+    const snapshot = (): ScanProgress => ({ checked, indexed, total, pages, pairs: currentPairs, unchecked });
+    const reportPage = (changed: boolean) => {
+        pages++;
+        if (changed) currentPairs = [...pairs.values()];
+        onProgress?.(snapshot());
+    };
 
-    await mapConcurrent([...followed.values()], scanConcurrency, async (blocker) => {
+    await mapConcurrent(profiles, scanConcurrency, async (blocker) => {
         try {
             const pds = await resolvePds(blocker.did, readJson);
+            if (!isBlueskyPds(pds)) {
+                fallback.push(blocker);
+                return;
+            }
+
             const url = new URL("/xrpc/com.atproto.repo.listRecords", pds);
             url.search = new URLSearchParams({ repo: blocker.did, collection: blockCollection, limit: "100" })
                 .toString();
-            const seenCursors = new Set<string>();
-            while (true) {
-                const { records, cursor } = v.parse(BlockPage, await readJson(url));
+            const seen = new Set<string>();
+            let cursor;
+            do {
+                const page = v.parse(BlockPage, await readJson(url));
                 signal?.throwIfAborted();
-                pages++;
                 let changed = false;
-                for (const { value: { subject } } of records) {
-                    if (subject === blocker.did) continue;
+                for (const { value: { subject } } of page.records) {
                     const blocked = followed.get(subject);
-                    if (!blocked) continue;
-                    const blockerFirst = blocker.did < subject;
-                    const first = blockerFirst ? blocker : blocked;
-                    const second = blockerFirst ? blocked : blocker;
-                    const key = `${first.did}\0${second.did}`;
-                    const previous = pairs.get(key);
-                    if (blockerFirst ? previous?.firstBlocksSecond : previous?.secondBlocksFirst) continue;
-                    pairs.set(key, {
-                        first,
-                        second,
-                        firstBlocksSecond: blockerFirst || (previous?.firstBlocksSecond ?? false),
-                        secondBlocksFirst: !blockerFirst || (previous?.secondBlocksFirst ?? false),
-                    });
-                    changed = true;
+                    if (blocked && addBlock(pairs, blocker, blocked)) changed = true;
                 }
-                if (changed) {
-                    sortedPairs = [...pairs.values()].sort((a, b) => {
-                        const [aFirst, aSecond] = getPairHandles(a);
-                        const [bFirst, bSecond] = getPairHandles(b);
-                        return aFirst.localeCompare(bFirst) || aSecond.localeCompare(bSecond);
-                    });
-                }
-                if (!cursor) break;
-                if (seenCursors.has(cursor)) throw new Error("Data server returned a repeated block page cursor");
-                seenCursors.add(cursor);
-                url.searchParams.set("cursor", cursor);
-                if (changed) onProgress?.(snapshot());
-            }
+                reportPage(changed);
+                cursor = page.cursor;
+            } while (advanceCursor(url, seen, cursor));
             checked++;
-        } catch (error) {
+        } catch {
             signal?.throwIfAborted();
-            unchecked = [...unchecked, {
-                profile: blocker,
-                reason: error instanceof Error ? error.message : String(error),
-            }].sort((a, b) => a.profile.handle.localeCompare(b.profile.handle));
+            fallback.push(blocker);
         }
         onProgress?.(snapshot());
+    });
+
+    const batches: { authors: Map<Did, ProfileView>; processed: number; error?: string; }[] = batchIndexAuthors(
+        fallback,
+    )
+        .map((authors) => ({
+            authors: new Map(authors.map((profile) => [profile.did, profile])),
+            processed: 0,
+        }));
+
+    await mapConcurrent(batches.flatMap((batch) => profiles.map((blocked) => ({ batch, blocked }))), 4, async ({
+        batch,
+        blocked,
+    }) => {
+        try {
+            const url = new URL(backlinksUrl);
+            url.searchParams.set("subject", blocked.did);
+            url.searchParams.set("source", `${blockCollection}:subject`);
+            url.searchParams.set("limit", "100");
+            for (const did of batch.authors.keys()) url.searchParams.append("did", did);
+            const seen = new Set<string>();
+            let cursor;
+            do {
+                const page = v.parse(BacklinkPage, await readJson(url));
+                signal?.throwIfAborted();
+                let changed = false;
+                for (const { did } of page.records) {
+                    const blocker = batch.authors.get(did);
+                    if (blocker && addBlock(pairs, blocker, blocked)) changed = true;
+                }
+                reportPage(changed);
+                cursor = page.cursor;
+            } while (advanceCursor(url, seen, cursor));
+        } catch (error) {
+            signal?.throwIfAborted();
+            batch.error ??= error instanceof Error ? error.message : String(error);
+        }
+        if (++batch.processed === total) {
+            if (batch.error) {
+                const reason = `Constellation scan incomplete: ${batch.error}`;
+                unchecked = [...unchecked, ...[...batch.authors.values()].map((profile) => ({ profile, reason }))]
+                    .sort((a, b) => a.profile.handle.localeCompare(b.profile.handle));
+            } else {
+                indexed += batch.authors.size;
+            }
+            onProgress?.(snapshot());
+        }
     });
 
     return snapshot();

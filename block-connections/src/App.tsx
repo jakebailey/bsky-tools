@@ -116,7 +116,7 @@ const Page: Component = () => {
                 status: "scan",
                 profile,
                 running: true,
-                progress: { checked: 0, total: followed.size, pages: 0, pairs: [], unchecked: [] },
+                progress: { checked: 0, indexed: 0, total: followed.size, pages: 0, pairs: [], unchecked: [] },
             });
             const progress = await findBlockPairs(followed, (progress) => {
                 if (!signal.aborted) setState({ status: "scan", profile, running: true, progress });
@@ -216,8 +216,10 @@ const Page: Component = () => {
                                 <ProfileCard profile={result().profile} />
                                 <p class="progress">
                                     {result().running ? "Scanning blocks... " : ""}
-                                    {progress().checked.toLocaleString()} / {progress().total.toLocaleString()}{" "}
-                                    accounts checked ({progress().pages.toLocaleString()} record pages)
+                                    {progress().checked.toLocaleString()} checked directly,{" "}
+                                    {progress().indexed.toLocaleString()} checked through Constellation,{" "}
+                                    {progress().total.toLocaleString()} accounts total{" "}
+                                    ({progress().pages.toLocaleString()} record pages)
                                 </p>
                                 <p class="result-summary">
                                     Found {progress().pairs.length.toLocaleString()} block pair
@@ -277,8 +279,9 @@ const Page: Component = () => {
             </Switch>
 
             <p class="footer">
-                This site queries Bluesky, the PLC directory, Microcosm Slingshot, and AT Protocol data servers directly
-                in your browser. No data is stored. Results cover direct blocks.
+                This site queries Bluesky APIs, Bluesky-operated data servers, the PLC directory, and Microcosm directly
+                in your browser. This site does not store scan data. Results cover direct blocks, and Constellation may
+                miss some records.
             </p>
         </div>
     );
