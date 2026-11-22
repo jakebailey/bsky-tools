@@ -26,9 +26,12 @@ export const HandleInput: Component<{
     const [suggestions, setSuggestions] = createSignal<ProfileViewBasic[]>([]);
     const [showDropdown, setShowDropdown] = createSignal(false);
 
-    createEffect(() => {
-        setQuery(props.value ?? "");
-    });
+    createEffect(
+        () => props.value ?? "",
+        (value) => {
+            setQuery(value);
+        },
+    );
     const [selectedIndex, setSelectedIndex] = createSignal(-1);
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
     let abortController: AbortController | undefined;
@@ -130,7 +133,7 @@ export const HandleInput: Component<{
                 name={props.name}
                 type="text"
                 role="combobox"
-                aria-expanded={showDropdown() && suggestions().length > 0}
+                aria-expanded={showDropdown() && suggestions().length > 0 ? "true" : "false"}
                 aria-controls={listboxId()}
                 aria-activedescendant={selectedIndex() >= 0 ? `${props.id}-option-${selectedIndex()}` : undefined}
                 aria-autocomplete="list"
@@ -160,8 +163,8 @@ export const HandleInput: Component<{
                             <li
                                 id={`${props.id}-option-${i()}`}
                                 role="option"
-                                aria-selected={i() === selectedIndex()}
-                                classList={{ "suggestion-selected": i() === selectedIndex() }}
+                                aria-selected={i() === selectedIndex() ? "true" : "false"}
+                                class={{ "suggestion-selected": i() === selectedIndex() }}
                                 onMouseDown={(e) => handleSelect(e, actor)}
                                 onTouchEnd={(e) => handleSelect(e, actor)}
                             >

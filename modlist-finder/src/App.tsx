@@ -3,18 +3,8 @@ import "../../shared.css";
 import "./App.css";
 
 import { makePersisted } from "@solid-primitives/storage";
-import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
-import {
-    type Component,
-    createEffect,
-    createSignal,
-    ErrorBoundary,
-    For,
-    Match,
-    Show,
-    type Signal,
-    Switch,
-} from "solid-js";
+import { createRouter, hashHistory, useNavigate, useParams } from "@solidjs/router";
+import { type Component, createEffect, createSignal, Errored, For, Match, Show, Switch } from "solid-js";
 import { avatarFallback, cleanHandle, isEngagementHacker, mapConcurrent, profilePrefix } from "../../shared/bsky";
 import { HandleInput } from "../../shared/HandleInput";
 import { ProfileCard } from "../../shared/ProfileCard";
@@ -136,14 +126,14 @@ const Page: Component = () => {
     const params = useParams<{ handle?: string | undefined; }>();
     const [state, setState] = createSignal<PageState>({ status: "idle" });
     let abortController: AbortController | undefined;
-    const [dimHackers, setDimHackers] = makePersisted<boolean, Signal<boolean>>(createSignal(true), {
+    const [dimHackers, setDimHackers] = makePersisted(createSignal(true), {
         name: "dimHackers",
     });
     const [extraLists, setExtraLists] = createSignal<ListEntry[]>([]);
     const [loadingMore, setLoadingMore] = createSignal(false);
 
     // Follow-check state
-    const [viewerHandle, setViewerHandle] = makePersisted<string, Signal<string>>(createSignal(""), {
+    const [viewerHandle, setViewerHandle] = makePersisted(createSignal(""), {
         name: "viewerHandle",
     });
     const [viewerFollows, setViewerFollows] = createSignal<Set<string>>();
@@ -248,10 +238,9 @@ const Page: Component = () => {
     };
 
     // React to URL changes (back/forward navigation, initial load, form submit)
-    createEffect(() => {
-        const handle = params.handle;
+    createEffect(() => params.handle, (handle) => {
         if (handle) {
-            doSearch(decodeURIComponent(handle));
+            doSearch(handle);
         } else {
             setState({ status: "idle" });
         }
@@ -296,7 +285,7 @@ const Page: Component = () => {
                 <HandleInput
                     id="handle"
                     name="handle"
-                    value={decodeURIComponent(params.handle || "")}
+                    value={params.handle || ""}
                     autofocus
                 />
                 <button type="submit">Search</button>
@@ -373,8 +362,8 @@ const Page: Component = () => {
                         <For each={allLists()}>
                             {(list) => (
                                 <li
-                                    class="profile-item"
-                                    classList={{
+                                    class={{
+                                        "profile-item": true,
                                         dimmed: dimHackers()
                                             && (isEngagementHacker(list.profile)
                                                 || !!list.labels?.some((l) => l.val === "!hide")),
@@ -541,20 +530,23 @@ const Page: Component = () => {
     );
 };
 
+const Router = createRouter({
+    history: hashHistory(),
+    routes: [{ path: "/:handle?", component: Page }],
+});
+
 const App: Component = () => {
     return (
-        <ErrorBoundary
+        <Errored
             fallback={(err) => (
                 <div class="error">
                     <h1>Something went wrong</h1>
-                    <p>{String(err)}</p>
+                    <p>{String(err())}</p>
                 </div>
             )}
         >
-            <HashRouter root={(props) => <>{props.children}</>}>
-                <Route path="/:handle?" component={Page} />
-            </HashRouter>
-        </ErrorBoundary>
+            <Router>{(props) => <>{props.children}</>}</Router>
+        </Errored>
     );
 };
 

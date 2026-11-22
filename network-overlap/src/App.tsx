@@ -3,18 +3,8 @@ import "../../shared.css";
 import "./App.css";
 
 import { makePersisted } from "@solid-primitives/storage";
-import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
-import {
-    type Component,
-    createEffect,
-    createSignal,
-    ErrorBoundary,
-    For,
-    Match,
-    Show,
-    type Signal,
-    Switch,
-} from "solid-js";
+import { createRouter, hashHistory, useNavigate, useParams } from "@solidjs/router";
+import { type Component, createEffect, createSignal, Errored, For, Match, Show, Switch } from "solid-js";
 import { avatarFallback, cleanHandle, isEngagementHacker, profilePrefix } from "../../shared/bsky";
 import { HandleInput } from "../../shared/HandleInput";
 import { ProfileCard } from "../../shared/ProfileCard";
@@ -52,7 +42,7 @@ type EnrichedOverlapResult =
     };
 
 const ProfileListItem: Component<{ profile: ProfileViewDetailed; dimHackers: boolean; }> = (props) => (
-    <li class="profile-item" classList={{ dimmed: props.dimHackers && isEngagementHacker(props.profile) }}>
+    <li class={{ "profile-item": true, dimmed: props.dimHackers && isEngagementHacker(props.profile) }}>
         <div>
             <img src={props.profile.avatar || avatarFallback} alt="" class="avatar-inline" />
             <a href={`${profilePrefix}${props.profile.handle}`}>
@@ -89,8 +79,8 @@ const OverlapSection: Component<{
     const [showAll, setShowAll] = createSignal(false);
 
     // Reset expanded state when collapsed prop changes
-    createEffect(() => {
-        setExpanded(!props.collapsed);
+    createEffect(() => props.collapsed, (collapsed) => {
+        setExpanded(!collapsed);
     });
 
     const displayed = () => showAll() ? props.profiles : props.profiles.slice(0, 50);
@@ -145,7 +135,7 @@ const Page: Component = () => {
     const params = useParams<{ handleA?: string; handleB?: string; }>();
     const [state, setState] = createSignal<CompareState>({ status: "idle" });
     let abortController: AbortController | undefined;
-    const [dimHackers, setDimHackers] = makePersisted<boolean, Signal<boolean>>(createSignal(true), {
+    const [dimHackers, setDimHackers] = makePersisted(createSignal(true), {
         name: "dimHackers",
     });
 
@@ -248,14 +238,12 @@ const Page: Component = () => {
     };
 
     // React to URL changes (back/forward navigation, initial load, form submit)
-    createEffect(() => {
-        const a = params.handleA;
-        const b = params.handleB;
+    createEffect(() => [params.handleA, params.handleB], ([a, b]) => {
         if (a && b) {
             try {
-                const actorA = cleanHandle(decodeURIComponent(a));
-                const actorB = cleanHandle(decodeURIComponent(b));
-                if (actorA !== decodeURIComponent(a) || actorB !== decodeURIComponent(b)) {
+                const actorA = cleanHandle(a);
+                const actorB = cleanHandle(b);
+                if (actorA !== a || actorB !== b) {
                     navigate(`/${encodeURIComponent(actorA)}/${encodeURIComponent(actorB)}`, { replace: true });
                     return;
                 }
@@ -307,7 +295,7 @@ const Page: Component = () => {
                         id="handleA"
                         name="handleA"
                         placeholder="First handle, DID, or profile link"
-                        value={decodeURIComponent(params.handleA || "")}
+                        value={params.handleA || ""}
                         autofocus
                     />
                     <span class="vs">vs</span>
@@ -315,7 +303,7 @@ const Page: Component = () => {
                         id="handleB"
                         name="handleB"
                         placeholder="Second handle, DID, or profile link"
-                        value={decodeURIComponent(params.handleB || "")}
+                        value={params.handleB || ""}
                     />
                     <button type="submit">Compare</button>
                 </div>
@@ -340,10 +328,10 @@ const Page: Component = () => {
                                 <div class="loading">
                                     <p>Fetching network data...</p>
                                     <p class="progress">
-                                        {formatProgress(s.progressA, decodeURIComponent(params.handleA || "User A"))}
+                                        {formatProgress(s.progressA, params.handleA || "User A")}
                                     </p>
                                     <p class="progress">
-                                        {formatProgress(s.progressB, decodeURIComponent(params.handleB || "User B"))}
+                                        {formatProgress(s.progressB, params.handleB || "User B")}
                                     </p>
                                     <p class="note">This may take a while for accounts with many followers.</p>
                                 </div>
@@ -518,20 +506,23 @@ const Page: Component = () => {
     );
 };
 
+const Router = createRouter({
+    history: hashHistory(),
+    routes: [{ path: "/:handleA?/:handleB?", component: Page }],
+});
+
 const App: Component = () => {
     return (
-        <ErrorBoundary
+        <Errored
             fallback={(err) => (
                 <div class="error">
                     <h1>Something went wrong</h1>
-                    <p>{String(err)}</p>
+                    <p>{String(err())}</p>
                 </div>
             )}
         >
-            <HashRouter root={(props) => <>{props.children}</>}>
-                <Route path="/:handleA?/:handleB?" component={Page} />
-            </HashRouter>
-        </ErrorBoundary>
+            <Router>{(props) => <>{props.children}</>}</Router>
+        </Errored>
     );
 };
 

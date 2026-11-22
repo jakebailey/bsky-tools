@@ -3,18 +3,8 @@ import "../../shared.css";
 import "./App.css";
 
 import { makePersisted } from "@solid-primitives/storage";
-import { HashRouter, Route, useNavigate, useParams } from "@solidjs/router";
-import {
-    type Component,
-    createEffect,
-    createSignal,
-    ErrorBoundary,
-    For,
-    Match,
-    Show,
-    type Signal,
-    Switch,
-} from "solid-js";
+import { createRouter, hashHistory, useNavigate, useParams } from "@solidjs/router";
+import { type Component, createEffect, createSignal, Errored, For, Match, Show, Switch } from "solid-js";
 import { avatarFallback, cleanHandle, isEngagementHacker, profilePrefix } from "../../shared/bsky";
 import { HandleInput } from "../../shared/HandleInput";
 import { ProfileCard } from "../../shared/ProfileCard";
@@ -34,7 +24,7 @@ type AppState =
     | { status: "error"; error: string; };
 
 const MutualListItem: Component<{ profile: MutualProfile; rank: number; dimHackers: boolean; }> = (props) => (
-    <li class="profile-item" classList={{ dimmed: props.dimHackers && isEngagementHacker(props.profile) }}>
+    <li class={{ "profile-item": true, dimmed: props.dimHackers && isEngagementHacker(props.profile) }}>
         <div>
             <span class="mutual-rank">{props.rank}</span>
             <img src={props.profile.avatar || avatarFallback} alt="" class="avatar-inline" />
@@ -60,7 +50,7 @@ const Page: Component = () => {
     const params = useParams<{ handle?: string; }>();
     const [state, setState] = createSignal<AppState>({ status: "idle" });
     const [showAll, setShowAll] = createSignal(false);
-    const [dimHackers, setDimHackers] = makePersisted<boolean, Signal<boolean>>(createSignal(true), {
+    const [dimHackers, setDimHackers] = makePersisted(createSignal(true), {
         name: "dimHackers",
     });
     let abortController: AbortController | undefined;
@@ -98,12 +88,11 @@ const Page: Component = () => {
         }
     };
 
-    createEffect(() => {
-        const h = params.handle;
+    createEffect(() => params.handle, (h) => {
         if (h) {
             try {
-                const actor = cleanHandle(decodeURIComponent(h));
-                if (actor !== decodeURIComponent(h)) {
+                const actor = cleanHandle(h);
+                if (actor !== h) {
                     navigate(`/${encodeURIComponent(actor)}`, { replace: true });
                     return;
                 }
@@ -157,7 +146,7 @@ const Page: Component = () => {
                         id="handle"
                         name="handle"
                         placeholder="Handle, DID, or profile link"
-                        value={decodeURIComponent(params.handle || "")}
+                        value={params.handle || ""}
                         autofocus
                     />
                     <button type="submit">Search</button>
@@ -176,7 +165,7 @@ const Page: Component = () => {
                                 <div class="loading">
                                     <p>Fetching network data...</p>
                                     <p class="progress">
-                                        {formatProgress(s().progress, decodeURIComponent(params.handle || ""))}
+                                        {formatProgress(s().progress, params.handle || "")}
                                     </p>
                                     <p class="note">This may take a while for accounts with many follows.</p>
                                 </div>
@@ -237,19 +226,22 @@ const Page: Component = () => {
     );
 };
 
+const Router = createRouter({
+    history: hashHistory(),
+    routes: [{ path: "/:handle?", component: Page }],
+});
+
 const App: Component = () => (
-    <ErrorBoundary
+    <Errored
         fallback={(err) => (
             <div class="error">
                 <h1>Something went wrong</h1>
-                <p>{String(err)}</p>
+                <p>{String(err())}</p>
             </div>
         )}
     >
-        <HashRouter>
-            <Route path="/:handle?" component={Page} />
-        </HashRouter>
-    </ErrorBoundary>
+        <Router>{(props) => <>{props.children}</>}</Router>
+    </Errored>
 );
 
 export default App;

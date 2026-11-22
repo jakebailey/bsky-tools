@@ -1,5 +1,6 @@
 import { tokenize } from "@atcute/bluesky-richtext-parser";
-import { type Component, For, type JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { type Component, For } from "solid-js";
 import { profilePrefix } from "./bsky";
 
 // Ported from the official Bluesky app's RichText.tsx for bare URL detection

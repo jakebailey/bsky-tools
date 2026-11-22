@@ -1,6 +1,6 @@
+import solidPlugin from "@solidjs/vite-plugin";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
-import solidPlugin from "vite-plugin-solid";
 
 export default defineConfig({
     base: "./",
