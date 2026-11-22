@@ -3,16 +3,23 @@ import { isDid } from "@atcute/lexicons/syntax";
 import * as v from "valibot";
 import { mapConcurrent, type ProfileView } from "../../shared/bsky";
 
-const constellationBacklinksUrl = "https://constellation.microcosm.blue/xrpc/blue.microcosm.links.getBacklinks";
-const blockSource = "app.bsky.graph.block:subject";
-const maxBacklinksUrlLength = 7_800;
-const backlinksConcurrency = 2;
-const backlinksRequestInterval = 100;
-const maxRateLimitRetries = 5;
+const plcDirectory = "https://plc.directory";
+const miniDocUrl = "https://slingshot.microcosm.blue/xrpc/blue.microcosm.identity.resolveMiniDoc";
+const blockCollection = "app.bsky.graph.block";
+const scanConcurrency = 12;
+const requestTimeout = 8_000;
+const maxRetryWait = 10_000;
 
-const BacklinksSchema = v.object({
-    records: v.array(v.object({ did: v.custom<Did>(isDid) })),
-    cursor: v.optional(v.nullable(v.string())),
+const PlcDocument = v.object({
+    id: v.string(),
+    service: v.array(v.object({ id: v.string(), type: v.string(), serviceEndpoint: v.unknown() })),
+});
+
+const MiniDoc = v.object({ did: v.string(), pds: v.string() });
+
+const BlockPage = v.object({
+    records: v.array(v.object({ value: v.object({ subject: v.custom<Did>(isDid) }) })),
+    cursor: v.optional(v.string()),
 });
 
 export interface BlockPair {
@@ -22,10 +29,17 @@ export interface BlockPair {
     secondBlocksFirst: boolean;
 }
 
+export interface UncheckedAccount {
+    profile: ProfileView;
+    reason: string;
+}
+
 export interface ScanProgress {
     checked: number;
     total: number;
     pages: number;
+    pairs: BlockPair[];
+    unchecked: UncheckedAccount[];
 }
 
 function getPairHandles(pair: BlockPair): [string, string] {
@@ -34,200 +48,173 @@ function getPairHandles(pair: BlockPair): [string, string] {
         : [pair.second.handle, pair.first.handle];
 }
 
-function createBacklinksUrl(subject: Did, linkingDids: Did[], cursor?: string): string {
-    const params = new URLSearchParams({
-        subject,
-        source: blockSource,
-        limit: "100",
-    });
-    if (cursor) params.set("cursor", cursor);
-    const didFilters = linkingDids.map(createDidFilter).join("");
-    return `${constellationBacklinksUrl}?${params}${didFilters}`;
-}
-
-function createDidFilter(did: Did): string {
-    return `&did=${encodeURIComponent(did).replaceAll("%3A", ":")}`;
-}
-
-function batchLinkingDids(subject: Did, linkingDids: Did[]): Did[][] {
-    const batches: Did[][] = [];
-    const baseUrlLength = createBacklinksUrl(subject, []).length;
-    let urlLength = baseUrlLength;
-    let batch: Did[] = [];
-
-    for (const did of linkingDids) {
-        const filterLength = createDidFilter(did).length;
-        if (urlLength + filterLength > maxBacklinksUrlLength && batch.length > 0) {
-            batches.push(batch);
-            batch = [];
-            urlLength = baseUrlLength;
-        }
-        batch.push(did);
-        urlLength += filterLength;
-    }
-
-    if (batch.length > 0) batches.push(batch);
-    return batches;
-}
-
 function wait(milliseconds: number, signal?: AbortSignal): Promise<void> {
-    if (milliseconds <= 0) return Promise.resolve();
     return new Promise((resolve, reject) => {
+        signal?.throwIfAborted();
         const timeout = setTimeout(() => {
             signal?.removeEventListener("abort", abort);
             resolve();
         }, milliseconds);
         const abort = () => {
             clearTimeout(timeout);
-            reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+            reject(signal?.reason);
         };
         signal?.addEventListener("abort", abort, { once: true });
-        if (signal?.aborted) abort();
     });
 }
 
-function getRetryAfterMilliseconds(value: string | null): number | undefined {
-    if (!value) return undefined;
+function retryAfterMilliseconds(value: string | null): number {
+    if (value === null) return 0;
     const seconds = Number(value);
-    if (Number.isFinite(seconds)) return Math.max(0, seconds * 1_000);
-    const date = Date.parse(value);
-    return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now());
+    const delay = Number.isFinite(seconds) ? seconds * 1_000 : Date.parse(value) - Date.now();
+    return delay > 0 ? delay : 0;
 }
 
-function createBacklinksFetcher(): (url: string, signal?: AbortSignal) => Promise<Response> {
-    let nextRequestAt = 0;
-    let rateLimitedUntil = 0;
-    let requestSlot = Promise.resolve();
+function createJsonReader(signal?: AbortSignal) {
+    const hosts = new Map<string, { nextStart: number; retryAt: number; }>();
 
-    const waitForRequestSlot = async (signal?: AbortSignal) => {
-        while (true) {
-            let requestAt = 0;
-            const reservation = requestSlot.then(() => {
-                requestAt = Math.max(Date.now(), nextRequestAt, rateLimitedUntil);
-                nextRequestAt = requestAt + backlinksRequestInterval;
-            });
-            requestSlot = reservation.then(() => undefined, () => undefined);
-            await reservation;
-            await wait(requestAt - Date.now(), signal);
-            if (Date.now() >= rateLimitedUntil) return;
-        }
-    };
+    return async (url: URL): Promise<unknown> => {
+        const hostKey = url.hostname;
+        const host = hosts.get(hostKey) ?? { nextStart: 0, retryAt: 0 };
+        hosts.set(hostKey, host);
 
-    return async (url, signal) => {
-        let retries = 0;
-        while (true) {
-            await waitForRequestSlot(signal);
-            const response = await fetch(url, { signal });
-            if (response.status !== 429) return response;
-            await response.body?.cancel();
-            if (retries >= maxRateLimitRetries) {
-                throw new Error("Microcosm is rate-limiting scans. Please wait a moment before trying again.");
+        for (let attempt = 0;; attempt++) {
+            while (true) {
+                signal?.throwIfAborted();
+                const now = performance.now();
+                if (host.retryAt - now > maxRetryWait) {
+                    throw new Error(`${hostKey} asked the scanner to retry later`);
+                }
+                const delay = Math.max(host.nextStart, host.retryAt) - now;
+                if (delay <= 0) {
+                    host.nextStart = now + (url.origin === plcDirectory ? 75 : 110);
+                    break;
+                }
+                await wait(delay, signal);
             }
 
-            const backoff = Math.min(30_000, 1_000 * 2 ** retries);
-            const retryAfter = getRetryAfterMilliseconds(response.headers.get("Retry-After")) ?? 0;
-            const delay = Math.max(backoff, retryAfter) + Math.random() * 250;
-            rateLimitedUntil = Math.max(rateLimitedUntil, Date.now() + delay);
-            retries++;
+            const timeout = AbortSignal.timeout(requestTimeout);
+            const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+            const response = await fetch(url, {
+                signal: requestSignal,
+                credentials: "omit",
+                redirect: "error",
+                referrerPolicy: "no-referrer",
+            });
+            if (response.ok) return response.json();
+
+            const retryable = response.status === 429 || response.status >= 500;
+            if (retryable) {
+                const delay = Math.max(500 * 2 ** attempt, retryAfterMilliseconds(response.headers.get("Retry-After")));
+                host.retryAt = Math.max(host.retryAt, performance.now() + delay);
+            }
+            await response.body?.cancel();
+            if (!retryable || attempt >= 2) throw new Error(`${hostKey} returned HTTP ${response.status}`);
         }
     };
 }
 
-async function getBlockers(
-    subject: Did,
-    linkingDids: Did[],
-    signal: AbortSignal | undefined,
-    onPage: () => void,
-    fetchBacklinks: (url: string, signal?: AbortSignal) => Promise<Response>,
-): Promise<Did[]> {
-    const blockers = new Set<Did>();
-    const seenCursors = new Set<string>();
-    let cursor: string | undefined;
+type ReadJson = ReturnType<typeof createJsonReader>;
 
-    do {
-        const response = await fetchBacklinks(createBacklinksUrl(subject, linkingDids, cursor), signal);
-        if (!response.ok) {
-            throw new Error(`Microcosm request failed: ${response.status} ${response.statusText}`);
-        }
+async function resolvePds(did: Did, readJson: ReadJson): Promise<URL> {
+    let endpoint: unknown;
+    if (/^did:plc:[a-z2-7]{24}$/.test(did)) {
+        const doc = v.parse(PlcDocument, await readJson(new URL(`/${did}`, plcDirectory)));
+        if (doc.id !== did) throw new Error("PLC document did not match the account");
+        endpoint = doc.service.find((service) =>
+            (service.id === "#atproto_pds" || service.id === `${did}#atproto_pds`)
+            && service.type === "AtprotoPersonalDataServer"
+        )?.serviceEndpoint;
+    } else if (did.startsWith("did:web:")) {
+        const url = new URL(miniDocUrl);
+        url.searchParams.set("identifier", did);
+        const doc = v.parse(MiniDoc, await readJson(url));
+        if (doc.did !== did) throw new Error("Resolved identity did not match the account");
+        endpoint = doc.pds;
+    } else {
+        throw new Error("Unsupported DID method");
+    }
 
-        const result = v.parse(BacklinksSchema, await response.json());
-        for (const record of result.records) {
-            blockers.add(record.did);
-        }
-        onPage();
-
-        cursor = result.cursor ?? undefined;
-        if (cursor && seenCursors.has(cursor)) {
-            throw new Error("Microcosm returned a repeated cursor while listing block relationships");
-        }
-        if (cursor) seenCursors.add(cursor);
-    } while (cursor);
-
-    return [...blockers];
+    if (typeof endpoint !== "string") throw new Error("No data server listed for the account");
+    const pds = new URL(endpoint);
+    // The endpoint comes from a public DID document. Send only credential-free reads to HTTPS DNS hosts.
+    if (
+        pds.protocol !== "https:" || pds.username || pds.password || pds.pathname !== "/" || pds.search || pds.hash
+        || !/\.[a-z][a-z0-9-]*$/i.test(pds.hostname) || /\.(localhost|local|internal)$/i.test(pds.hostname)
+    ) {
+        throw new Error("Invalid public HTTPS data server endpoint");
+    }
+    return pds;
 }
 
 export async function findBlockPairs(
     followed: Map<ActorIdentifier, ProfileView>,
     onProgress?: (progress: ScanProgress) => void,
     signal?: AbortSignal,
-): Promise<BlockPair[]> {
-    const followedDids: Did[] = [];
-    for (const did of followed.keys()) {
-        if (!isDid(did)) {
-            throw new Error(`Invalid followed DID: ${did}`);
-        }
-        followedDids.push(did);
-    }
-    const followedSet = new Set(followedDids);
+): Promise<ScanProgress> {
     const pairs = new Map<string, BlockPair>();
-    const queries = followedDids.flatMap((subject) => {
-        const batches = batchLinkingDids(subject, followedDids);
-        return batches.map((linkingDids) => ({ subject, linkingDids, batchCount: batches.length }));
-    });
-    const completedBatches = new Map<Did, number>();
-    const fetchBacklinks = createBacklinksFetcher();
+    const readJson = createJsonReader(signal);
+    const total = followed.size;
     let checked = 0;
     let pages = 0;
+    let sortedPairs: BlockPair[] = [];
+    let unchecked: UncheckedAccount[] = [];
 
-    await mapConcurrent(queries, backlinksConcurrency, async ({ subject, linkingDids, batchCount }) => {
-        const blockers = await getBlockers(subject, linkingDids, signal, () => {
-            pages++;
-            onProgress?.({ checked, total: followedDids.length, pages });
-        }, fetchBacklinks);
+    const snapshot = (): ScanProgress => ({ checked, total, pages, pairs: sortedPairs, unchecked });
 
-        for (const blockerDid of blockers) {
-            if (blockerDid === subject || !followedSet.has(blockerDid)) continue;
-
-            const firstDid = blockerDid < subject ? blockerDid : subject;
-            const secondDid = blockerDid < subject ? subject : blockerDid;
-            const first = followed.get(firstDid);
-            const second = followed.get(secondDid);
-            if (!first || !second) continue;
-
-            const key = `${firstDid}\0${secondDid}`;
-            const pair = pairs.get(key) ?? {
-                first,
-                second,
-                firstBlocksSecond: false,
-                secondBlocksFirst: false,
-            };
-            if (blockerDid === firstDid) {
-                pair.firstBlocksSecond = true;
-            } else {
-                pair.secondBlocksFirst = true;
+    await mapConcurrent([...followed.values()], scanConcurrency, async (blocker) => {
+        try {
+            const pds = await resolvePds(blocker.did, readJson);
+            const url = new URL("/xrpc/com.atproto.repo.listRecords", pds);
+            url.search = new URLSearchParams({ repo: blocker.did, collection: blockCollection, limit: "100" })
+                .toString();
+            const seenCursors = new Set<string>();
+            while (true) {
+                const { records, cursor } = v.parse(BlockPage, await readJson(url));
+                signal?.throwIfAborted();
+                pages++;
+                let changed = false;
+                for (const { value: { subject } } of records) {
+                    if (subject === blocker.did) continue;
+                    const blocked = followed.get(subject);
+                    if (!blocked) continue;
+                    const blockerFirst = blocker.did < subject;
+                    const first = blockerFirst ? blocker : blocked;
+                    const second = blockerFirst ? blocked : blocker;
+                    const key = `${first.did}\0${second.did}`;
+                    const previous = pairs.get(key);
+                    if (blockerFirst ? previous?.firstBlocksSecond : previous?.secondBlocksFirst) continue;
+                    pairs.set(key, {
+                        first,
+                        second,
+                        firstBlocksSecond: blockerFirst || (previous?.firstBlocksSecond ?? false),
+                        secondBlocksFirst: !blockerFirst || (previous?.secondBlocksFirst ?? false),
+                    });
+                    changed = true;
+                }
+                if (changed) {
+                    sortedPairs = [...pairs.values()].sort((a, b) => {
+                        const [aFirst, aSecond] = getPairHandles(a);
+                        const [bFirst, bSecond] = getPairHandles(b);
+                        return aFirst.localeCompare(bFirst) || aSecond.localeCompare(bSecond);
+                    });
+                }
+                if (!cursor) break;
+                if (seenCursors.has(cursor)) throw new Error("Data server returned a repeated block page cursor");
+                seenCursors.add(cursor);
+                url.searchParams.set("cursor", cursor);
+                if (changed) onProgress?.(snapshot());
             }
-            pairs.set(key, pair);
+            checked++;
+        } catch (error) {
+            signal?.throwIfAborted();
+            unchecked = [...unchecked, {
+                profile: blocker,
+                reason: error instanceof Error ? error.message : String(error),
+            }].sort((a, b) => a.profile.handle.localeCompare(b.profile.handle));
         }
-
-        const completed = (completedBatches.get(subject) ?? 0) + 1;
-        completedBatches.set(subject, completed);
-        if (completed === batchCount) checked++;
-        onProgress?.({ checked, total: followedDids.length, pages });
+        onProgress?.(snapshot());
     });
 
-    return [...pairs.values()].sort((a, b) => {
-        const [aFirst, aSecond] = getPairHandles(a);
-        const [bFirst, bSecond] = getPairHandles(b);
-        return aFirst.localeCompare(bFirst) || aSecond.localeCompare(bSecond);
-    });
+    return snapshot();
 }

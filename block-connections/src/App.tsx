@@ -21,12 +21,11 @@ type PageState =
     | {
         status: "loading";
         profile: ProfileViewDetailed | null;
-        phase: "profile" | "follows" | "blocks";
+        phase: "profile" | "follows";
         current: number;
         total?: number;
-        pages: number;
     }
-    | { status: "done"; profile: ProfileViewDetailed; followsCount: number; pairs: BlockPair[]; }
+    | { status: "scan"; profile: ProfileViewDetailed; running: boolean; progress: ScanProgress; }
     | { status: "error"; error: string; };
 
 function getBlockDirections(pair: BlockPair): { blocker: BlockPair["first"]; blocked: BlockPair["second"]; }[] {
@@ -49,7 +48,7 @@ const Page: Component = () => {
         const controller = new AbortController();
         abortController = controller;
         const signal = controller.signal;
-        setState({ status: "loading", profile: null, phase: "profile", current: 0, pages: 0 });
+        setState({ status: "loading", profile: null, phase: "profile", current: 0 });
 
         try {
             const profile = await getProfile(actor, signal);
@@ -60,10 +59,10 @@ const Page: Component = () => {
                 phase: "follows",
                 current: 0,
                 total: profile.followsCount,
-                pages: 0,
             });
 
             const followed = await getAllFollows(profile.did, (progress) => {
+                if (signal.aborted) return;
                 setState((previous) =>
                     previous.status === "loading" && previous.phase === "follows"
                         ? { ...previous, current: progress.current }
@@ -73,23 +72,17 @@ const Page: Component = () => {
             if (signal.aborted) return;
 
             setState({
-                status: "loading",
+                status: "scan",
                 profile,
-                phase: "blocks",
-                current: 0,
-                total: followed.size,
-                pages: 0,
+                running: true,
+                progress: { checked: 0, total: followed.size, pages: 0, pairs: [], unchecked: [] },
             });
-            const pairs = await findBlockPairs(followed, (progress: ScanProgress) => {
-                setState((previous) =>
-                    previous.status === "loading" && previous.phase === "blocks"
-                        ? { ...previous, current: progress.checked, pages: progress.pages }
-                        : previous
-                );
+            const progress = await findBlockPairs(followed, (progress) => {
+                if (!signal.aborted) setState({ status: "scan", profile, running: true, progress });
             }, signal);
             if (signal.aborted) return;
 
-            setState({ status: "done", profile, followsCount: followed.size, pairs });
+            setState({ status: "scan", profile, running: false, progress });
         } catch (error) {
             if (signal.aborted) return;
             controller.abort();
@@ -129,6 +122,7 @@ const Page: Component = () => {
                         const actor = cleanHandle(form.handle.value);
                         if (actor) navigate(`/${encodeURIComponent(actor)}`);
                     } catch (error) {
+                        abortController?.abort();
                         setState({ status: "error", error: error instanceof Error ? error.message : "Invalid handle" });
                     }
                 }}
@@ -152,14 +146,9 @@ const Page: Component = () => {
                         const progressText = () => {
                             const current = loading();
                             if (current.phase === "profile") return "Resolving profile...";
-                            if (current.phase === "follows") {
-                                return `Fetching followed accounts... ${current.current.toLocaleString()}${
-                                    current.total == null ? "" : ` / ${current.total.toLocaleString()}`
-                                }`;
-                            }
-                            return `Scanning blocks... ${current.current.toLocaleString()} / ${
-                                current.total?.toLocaleString() ?? 0
-                            } accounts checked (${current.pages.toLocaleString()} index pages)`;
+                            return `Fetching followed accounts... ${current.current.toLocaleString()}${
+                                current.total == null ? "" : ` / ${current.total.toLocaleString()}`
+                            }`;
                         };
 
                         return (
@@ -169,7 +158,6 @@ const Page: Component = () => {
                                 </Show>
                                 <div class="loading">
                                     <p class="progress">{progressText()}</p>
-                                    <p class="note">Large follow lists or popular accounts may take a while.</p>
                                 </div>
                             </>
                         );
@@ -178,23 +166,27 @@ const Page: Component = () => {
                 <Match when={state().status === "error"}>
                     <p class="error">Error: {(state() as PageState & { status: "error"; }).error}</p>
                 </Match>
-                <Match when={state().status === "done"}>
+                <Match when={state().status === "scan"}>
                     {(() => {
-                        const result = () => state() as PageState & { status: "done"; };
+                        const result = () => state() as Extract<PageState, { status: "scan"; }>;
+                        const progress = () => result().progress;
                         return (
                             <>
                                 <ProfileCard profile={result().profile} />
-                                <p class="result-summary">
-                                    Found {result().pairs.length.toLocaleString()} block pair
-                                    {result().pairs.length === 1 ? "" : "s"} among{" "}
-                                    {result().followsCount.toLocaleString()} followed accounts
+                                <p class="progress">
+                                    {result().running ? "Scanning blocks... " : ""}
+                                    {progress().checked.toLocaleString()} / {progress().total.toLocaleString()}{" "}
+                                    accounts checked ({progress().pages.toLocaleString()} record pages)
                                 </p>
-                                <Show
-                                    when={result().pairs.length > 0}
-                                    fallback={<p>No indexed block relationships were found among these accounts.</p>}
-                                >
+                                <p class="result-summary">
+                                    Found {progress().pairs.length.toLocaleString()} block pair
+                                    {progress().pairs.length === 1 ? "" : "s"} among {progress().total.toLocaleString()}
+                                    {" "}
+                                    followed accounts
+                                </p>
+                                <Show when={progress().pairs.length > 0}>
                                     <ul class="profile-list block-pair-list">
-                                        <For each={result().pairs}>
+                                        <For each={progress().pairs}>
                                             {(pair) => (
                                                 <li class="block-pair">
                                                     <For each={getBlockDirections(pair)}>
@@ -229,6 +221,13 @@ const Page: Component = () => {
                                                     >
                                                         {pair.firstBlocksSecond && pair.secondBlocksFirst
                                                             ? "Mutual blocks"
+                                                            : result().running
+                                                                    || progress().unchecked.some(({ profile }) =>
+                                                                        profile.did === (pair.firstBlocksSecond
+                                                                            ? pair.second.did
+                                                                            : pair.first.did)
+                                                                    )
+                                                            ? "Direct block"
                                                             : "One-way block"}
                                                     </span>
                                                 </li>
@@ -236,10 +235,25 @@ const Page: Component = () => {
                                         </For>
                                     </ul>
                                 </Show>
-                                <p class="note">
-                                    Results come from Microcosm’s public index. Missing results may reflect index
-                                    coverage or update delays.
-                                </p>
+                                <Show when={!result().running && progress().unchecked.length > 0}>
+                                    <details>
+                                        <summary>
+                                            {progress().unchecked.length.toLocaleString()}{" "}
+                                            accounts could not be fully checked. Results may be incomplete.
+                                        </summary>
+                                        <ul class="profile-list">
+                                            <For each={progress().unchecked}>
+                                                {({ profile, reason }) => (
+                                                    <li class="profile-item">
+                                                        <a href={`${profilePrefix}${profile.did}`}>@{profile.handle}</a>
+                                                        {" "}
+                                                        &mdash; {reason}
+                                                    </li>
+                                                )}
+                                            </For>
+                                        </ul>
+                                    </details>
+                                </Show>
                             </>
                         );
                     })()}
@@ -247,8 +261,8 @@ const Page: Component = () => {
             </Switch>
 
             <p class="footer">
-                This site queries the Bluesky and Microcosm Constellation APIs directly in your browser. No data is
-                stored.
+                This site queries Bluesky, the PLC directory, Microcosm Slingshot, and AT Protocol data servers directly
+                in your browser. No data is stored. Results cover direct blocks.
             </p>
         </div>
     );
