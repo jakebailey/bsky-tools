@@ -40,28 +40,31 @@ type PageState =
     | { status: "scan"; profile: ProfileViewDetailed; running: boolean; progress: ScanProgress; }
     | { status: "error"; error: string; };
 
-function groupByBlockedAccount(pairs: BlockPair[]) {
+type GroupBy = "blocked" | "blocking";
+
+function groupBlockPairs(pairs: BlockPair[], groupBy: GroupBy) {
     const groups = new Map<ProfileView["did"], {
-        blocked: ProfileView;
-        blockers: { profile: ProfileView; mutual: boolean; }[];
+        profile: ProfileView;
+        members: { profile: ProfileView; mutual: boolean; }[];
     }>();
     const add = (blocked: ProfileView, blocker: ProfileView, mutual: boolean) => {
-        let group = groups.get(blocked.did);
+        const [profile, member] = groupBy === "blocked" ? [blocked, blocker] : [blocker, blocked];
+        let group = groups.get(profile.did);
         if (!group) {
-            group = { blocked, blockers: [] };
-            groups.set(blocked.did, group);
+            group = { profile, members: [] };
+            groups.set(profile.did, group);
         }
-        group.blockers.push({ profile: blocker, mutual });
+        group.members.push({ profile: member, mutual });
     };
 
     for (const pair of pairs) {
         if (pair.firstBlocksSecond) add(pair.second, pair.first, pair.secondBlocksFirst);
         if (pair.secondBlocksFirst) add(pair.first, pair.second, pair.firstBlocksSecond);
     }
-    for (const { blockers } of groups.values()) {
-        blockers.sort((a, b) => a.profile.handle.localeCompare(b.profile.handle));
+    for (const { members } of groups.values()) {
+        members.sort((a, b) => a.profile.handle.localeCompare(b.profile.handle));
     }
-    return [...groups.values()].sort((a, b) => a.blocked.handle.localeCompare(b.blocked.handle));
+    return [...groups.values()].sort((a, b) => a.profile.handle.localeCompare(b.profile.handle));
 }
 
 const ProfileLink: Component<{ profile: ProfileView; }> = (props) => (
@@ -75,11 +78,12 @@ const Page: Component = () => {
     const navigate = useNavigate();
     const params = useParams<{ handle?: string; }>();
     const [state, setState] = createSignal<PageState>({ status: "idle" });
+    const [groupBy, setGroupBy] = createSignal<GroupBy>("blocked");
     const pairs = createMemo(() => {
         const current = state();
         return current.status === "scan" ? current.progress.pairs : [];
     });
-    const groups = createMemo(() => groupByBlockedAccount(pairs()));
+    const groups = createMemo(() => groupBlockPairs(pairs(), groupBy()));
     let abortController: AbortController | undefined;
 
     onCleanup(() => abortController?.abort());
@@ -228,19 +232,33 @@ const Page: Component = () => {
                                     followed accounts
                                 </p>
                                 <Show when={groups().length > 0}>
+                                    <label>
+                                        Group by{" "}
+                                        <select
+                                            value={groupBy()}
+                                            onChange={(event) =>
+                                                setGroupBy(
+                                                    event.currentTarget.value === "blocking" ? "blocking" : "blocked",
+                                                )}
+                                        >
+                                            <option value="blocked">Blocked accounts</option>
+                                            <option value="blocking">Blocking accounts</option>
+                                        </select>
+                                    </label>
                                     <ul class="profile-list block-group-list">
                                         <For each={groups()}>
                                             {(group) => (
                                                 <li class="block-group">
                                                     <h2>
-                                                        <ProfileLink profile={group.blocked} /> is blocked by
+                                                        <ProfileLink profile={group.profile} />{" "}
+                                                        {groupBy() === "blocked" ? "is blocked by" : "blocks"}
                                                     </h2>
                                                     <ul class="profile-list block-group-members">
-                                                        <For each={group.blockers}>
-                                                            {(blocker) => (
+                                                        <For each={group.members}>
+                                                            {(member) => (
                                                                 <li class="profile-item">
-                                                                    <ProfileLink profile={blocker.profile} />
-                                                                    <Show when={blocker.mutual}>
+                                                                    <ProfileLink profile={member.profile} />
+                                                                    <Show when={member.mutual}>
                                                                         {" "}
                                                                         <span class="block-mutual">(mutual)</span>
                                                                     </Show>
