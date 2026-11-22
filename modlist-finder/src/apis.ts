@@ -1,7 +1,7 @@
 import { ok } from "@atcute/client";
 import type { Did } from "@atcute/lexicons/syntax";
-import { isDid } from "@atcute/lexicons/syntax";
 import type { ActorIdentifier, ResourceUri } from "@atcute/lexicons/syntax";
+import { isDid } from "@atcute/lexicons/syntax";
 import * as v from "valibot";
 import {
     chunked,

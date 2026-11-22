@@ -5,7 +5,7 @@
     "useTabs": false,
     "typescript": {
         "quoteStyle": "preferDouble",
-        "semiColons": "always",
+        "semicolons": "always",
         "arrowFunction.useParentheses": "force"
     },
     "json": {

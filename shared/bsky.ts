@@ -1,7 +1,7 @@
 import type { AppBskyActorDefs, AppBskyGraphDefs } from "@atcute/bluesky";
 import { Client, ok, simpleFetchHandler } from "@atcute/client";
-import { isActorIdentifier } from "@atcute/lexicons/syntax";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
+import { isActorIdentifier } from "@atcute/lexicons/syntax";
 
 export type { ActorIdentifier } from "@atcute/lexicons/syntax";
 export type ProfileView = AppBskyActorDefs.ProfileView;

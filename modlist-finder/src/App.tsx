@@ -362,8 +362,9 @@ const Page: Component = () => {
                             <p class="error">{followsError()}</p>
                         </Show>
                         <Show when={viewerFollows()}>
-                            {(follows) => <p class="follows-loaded">{follows().size.toLocaleString()} follows loaded
-                            </p>}
+                            {(follows) => (
+                                <p class="follows-loaded">{follows().size.toLocaleString()} follows loaded</p>
+                            )}
                         </Show>
                     </div>
 

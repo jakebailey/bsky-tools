@@ -2,22 +2,12 @@
     "name": "bsky-tools",
     "version": "0.0.0",
     "private": true,
+    "license": "MIT",
     "type": "module",
     "scripts": {
         "dev": "vite",
         "build": "vite build",
         "serve": "vite preview"
-    },
-    "license": "MIT",
-    "devDependencies": {
-        "@dprint/json": "0.26.0",
-        "@dprint/markdown": "0.29.0",
-        "@dprint/typescript": "0.101.0",
-        "dprint-plugin-malva": "0.16.1",
-        "dprint-plugin-yaml": "0.6.0",
-        "typescript": "^7.0.2",
-        "vite": "^8.3.8",
-        "vite-plugin-solid": "^2.11.17"
     },
     "dependencies": {
         "@atcute/bluesky": "^4.0.27",
@@ -29,6 +19,16 @@
         "solid-js": "^1.9.20",
         "valibot": "^1.5.0",
         "water.css": "^2.1.1"
+    },
+    "devDependencies": {
+        "@dprint/json": "0.26.0",
+        "@dprint/markdown": "0.29.0",
+        "@dprint/typescript": "0.101.0",
+        "dprint-plugin-malva": "0.16.1",
+        "dprint-plugin-yaml": "0.6.0",
+        "typescript": "^7.0.2",
+        "vite": "^8.3.8",
+        "vite-plugin-solid": "^2.11.17"
     },
     "packageManager": "pnpm@12.21.0+sha512.66fd8278ee28935ce951792d34367ff3af5c432a2756445823029533835b8da529bbe0be5130afd56ed0713fb8789e47bad82d93bd5ae2fe54b15562d6276ef0"
 }
