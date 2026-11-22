@@ -4,7 +4,14 @@ import "./App.css";
 
 import { createRouter, hashHistory, useNavigate, useParams } from "@solidjs/router";
 import { type Component, createEffect, createSignal, Errored, For, Match, onCleanup, Show, Switch } from "solid-js";
-import { cleanHandle, getAllFollows, getProfile, profilePrefix, type ProfileViewDetailed } from "../../shared/bsky";
+import {
+    avatarFallback,
+    cleanHandle,
+    getAllFollows,
+    getProfile,
+    profilePrefix,
+    type ProfileViewDetailed,
+} from "../../shared/bsky";
 import { HandleInput } from "../../shared/HandleInput";
 import { ProfileCard } from "../../shared/ProfileCard";
 import { type BlockPair, findBlockPairs, type ScanProgress } from "./apis";
@@ -21,6 +28,13 @@ type PageState =
     }
     | { status: "done"; profile: ProfileViewDetailed; followsCount: number; pairs: BlockPair[]; }
     | { status: "error"; error: string; };
+
+function getBlockDirections(pair: BlockPair): { blocker: BlockPair["first"]; blocked: BlockPair["second"]; }[] {
+    const directions: { blocker: BlockPair["first"]; blocked: BlockPair["second"]; }[] = [];
+    if (pair.firstBlocksSecond) directions.push({ blocker: pair.first, blocked: pair.second });
+    if (pair.secondBlocksFirst) directions.push({ blocker: pair.second, blocked: pair.first });
+    return directions.sort((a, b) => a.blocker.handle.localeCompare(b.blocker.handle));
+}
 
 const Page: Component = () => {
     const navigate = useNavigate();
@@ -183,28 +197,29 @@ const Page: Component = () => {
                                         <For each={result().pairs}>
                                             {(pair) => (
                                                 <li class="block-pair">
-                                                    <Show when={pair.firstBlocksSecond}>
-                                                        <p>
-                                                            <a href={`${profilePrefix}${pair.first.did}`}>
-                                                                @{pair.first.handle}
-                                                            </a>{" "}
-                                                            blocks{" "}
-                                                            <a href={`${profilePrefix}${pair.second.did}`}>
-                                                                @{pair.second.handle}
-                                                            </a>
-                                                        </p>
-                                                    </Show>
-                                                    <Show when={pair.secondBlocksFirst}>
-                                                        <p>
-                                                            <a href={`${profilePrefix}${pair.second.did}`}>
-                                                                @{pair.second.handle}
-                                                            </a>{" "}
-                                                            blocks{" "}
-                                                            <a href={`${profilePrefix}${pair.first.did}`}>
-                                                                @{pair.first.handle}
-                                                            </a>
-                                                        </p>
-                                                    </Show>
+                                                    <For each={getBlockDirections(pair)}>
+                                                        {(direction) => (
+                                                            <p>
+                                                                <img
+                                                                    src={direction.blocker.avatar || avatarFallback}
+                                                                    alt=""
+                                                                    class="avatar-inline"
+                                                                />
+                                                                <a href={`${profilePrefix}${direction.blocker.did}`}>
+                                                                    @{direction.blocker.handle}
+                                                                </a>{" "}
+                                                                blocks{" "}
+                                                                <img
+                                                                    src={direction.blocked.avatar || avatarFallback}
+                                                                    alt=""
+                                                                    class="avatar-inline"
+                                                                />
+                                                                <a href={`${profilePrefix}${direction.blocked.did}`}>
+                                                                    @{direction.blocked.handle}
+                                                                </a>
+                                                            </p>
+                                                        )}
+                                                    </For>
                                                     <span
                                                         class={`block-status ${
                                                             pair.firstBlocksSecond && pair.secondBlocksFirst
@@ -232,8 +247,8 @@ const Page: Component = () => {
             </Switch>
 
             <p class="footer">
-                This tool compares public block records for accounts you follow. It does not reveal who has blocked your
-                own account.
+                This site queries the Bluesky and Microcosm Constellation APIs directly in your browser. No data is
+                stored.
             </p>
         </div>
     );

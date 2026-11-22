@@ -28,6 +28,12 @@ export interface ScanProgress {
     pages: number;
 }
 
+function getPairHandles(pair: BlockPair): [string, string] {
+    return pair.first.handle.localeCompare(pair.second.handle) <= 0
+        ? [pair.first.handle, pair.second.handle]
+        : [pair.second.handle, pair.first.handle];
+}
+
 function createBacklinksUrl(subject: Did, linkingDids: Did[], cursor?: string): string {
     const params = new URLSearchParams({
         subject,
@@ -220,10 +226,8 @@ export async function findBlockPairs(
     });
 
     return [...pairs.values()].sort((a, b) => {
-        const aMutual = a.firstBlocksSecond && a.secondBlocksFirst;
-        const bMutual = b.firstBlocksSecond && b.secondBlocksFirst;
-        return Number(bMutual) - Number(aMutual)
-            || a.first.handle.localeCompare(b.first.handle)
-            || a.second.handle.localeCompare(b.second.handle);
+        const [aFirst, aSecond] = getPairHandles(a);
+        const [bFirst, bSecond] = getPairHandles(b);
+        return aFirst.localeCompare(bFirst) || aSecond.localeCompare(bSecond);
     });
 }
