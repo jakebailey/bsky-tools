@@ -2,7 +2,7 @@ import "water.css/out/dark.min.css";
 import "../../shared.css";
 import "./App.css";
 
-import { createRouter, hashHistory, useNavigate, useParams } from "@solidjs/router";
+import { createRouter, hashHistory, useLocation, useNavigate, useParams, useSearchParams } from "@solidjs/router";
 import {
     type Component,
     createEffect,
@@ -75,10 +75,13 @@ const ProfileLink: Component<{ profile: ProfileView; }> = (props) => (
 );
 
 const Page: Component = () => {
+    const location = useLocation();
     const navigate = useNavigate();
     const params = useParams<{ handle?: string; }>();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [state, setState] = createSignal<PageState>({ status: "idle" });
-    const [groupBy, setGroupBy] = createSignal<GroupBy>("blocked");
+    const groupBy = (): GroupBy => searchParams.group === "blocking" ? "blocking" : "blocked";
+    const actorPath = (actor: string) => `/${encodeURIComponent(actor)}${location.search}`;
     const pairs = createMemo(() => {
         const current = state();
         return current.status === "scan" ? current.progress.pairs : [];
@@ -145,7 +148,7 @@ const Page: Component = () => {
         try {
             const actor = cleanHandle(handle);
             if (actor !== handle) {
-                navigate(`/${encodeURIComponent(actor)}`, { replace: true });
+                navigate(actorPath(actor), { replace: true });
                 return;
             }
             void doSearch(actor);
@@ -165,7 +168,7 @@ const Page: Component = () => {
                     try {
                         const form = event.target as HTMLFormElement;
                         const actor = cleanHandle(form.handle.value);
-                        if (actor) navigate(`/${encodeURIComponent(actor)}`);
+                        if (actor) navigate(actorPath(actor));
                     } catch (error) {
                         abortController?.abort();
                         setState({ status: "error", error: error instanceof Error ? error.message : "Invalid handle" });
@@ -237,9 +240,11 @@ const Page: Component = () => {
                                         <select
                                             value={groupBy()}
                                             onChange={(event) =>
-                                                setGroupBy(
-                                                    event.currentTarget.value === "blocking" ? "blocking" : "blocked",
-                                                )}
+                                                setSearchParams({
+                                                    group: event.currentTarget.value === "blocking"
+                                                        ? "blocking"
+                                                        : undefined,
+                                                })}
                                         >
                                             <option value="blocked">Blocked accounts</option>
                                             <option value="blocking">Blocking accounts</option>
