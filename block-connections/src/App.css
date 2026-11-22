@@ -1,0 +1,22 @@
+.block-pair-list {
+    margin-top: 24px;
+}
+
+.block-pair {
+    border-top: 1px solid #555;
+    padding: 8px 0;
+}
+
+.block-pair p {
+    margin: 4px 0;
+}
+
+.block-status {
+    display: inline-block;
+    font-size: 0.8em;
+    opacity: 0.7;
+}
+
+.block-status.mutual {
+    color: #ff8a80;
+}
