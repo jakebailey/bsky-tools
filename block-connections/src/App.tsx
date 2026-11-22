@@ -3,13 +3,25 @@ import "../../shared.css";
 import "./App.css";
 
 import { createRouter, hashHistory, useNavigate, useParams } from "@solidjs/router";
-import { type Component, createEffect, createSignal, Errored, For, Match, onCleanup, Show, Switch } from "solid-js";
+import {
+    type Component,
+    createEffect,
+    createMemo,
+    createSignal,
+    Errored,
+    For,
+    Match,
+    onCleanup,
+    Show,
+    Switch,
+} from "solid-js";
 import {
     avatarFallback,
     cleanHandle,
     getAllFollows,
     getProfile,
     profilePrefix,
+    type ProfileView,
     type ProfileViewDetailed,
 } from "../../shared/bsky";
 import { HandleInput } from "../../shared/HandleInput";
@@ -28,17 +40,46 @@ type PageState =
     | { status: "scan"; profile: ProfileViewDetailed; running: boolean; progress: ScanProgress; }
     | { status: "error"; error: string; };
 
-function getBlockDirections(pair: BlockPair): { blocker: BlockPair["first"]; blocked: BlockPair["second"]; }[] {
-    const directions: { blocker: BlockPair["first"]; blocked: BlockPair["second"]; }[] = [];
-    if (pair.firstBlocksSecond) directions.push({ blocker: pair.first, blocked: pair.second });
-    if (pair.secondBlocksFirst) directions.push({ blocker: pair.second, blocked: pair.first });
-    return directions.sort((a, b) => a.blocker.handle.localeCompare(b.blocker.handle));
+function groupByBlockedAccount(pairs: BlockPair[]) {
+    const groups = new Map<ProfileView["did"], {
+        blocked: ProfileView;
+        blockers: { profile: ProfileView; mutual: boolean; }[];
+    }>();
+    const add = (blocked: ProfileView, blocker: ProfileView, mutual: boolean) => {
+        let group = groups.get(blocked.did);
+        if (!group) {
+            group = { blocked, blockers: [] };
+            groups.set(blocked.did, group);
+        }
+        group.blockers.push({ profile: blocker, mutual });
+    };
+
+    for (const pair of pairs) {
+        if (pair.firstBlocksSecond) add(pair.second, pair.first, pair.secondBlocksFirst);
+        if (pair.secondBlocksFirst) add(pair.first, pair.second, pair.firstBlocksSecond);
+    }
+    for (const { blockers } of groups.values()) {
+        blockers.sort((a, b) => a.profile.handle.localeCompare(b.profile.handle));
+    }
+    return [...groups.values()].sort((a, b) => a.blocked.handle.localeCompare(b.blocked.handle));
 }
+
+const ProfileLink: Component<{ profile: ProfileView; }> = (props) => (
+    <>
+        <img src={props.profile.avatar || avatarFallback} alt="" class="avatar-inline" />
+        <a href={`${profilePrefix}${props.profile.did}`}>@{props.profile.handle}</a>
+    </>
+);
 
 const Page: Component = () => {
     const navigate = useNavigate();
     const params = useParams<{ handle?: string; }>();
     const [state, setState] = createSignal<PageState>({ status: "idle" });
+    const pairs = createMemo(() => {
+        const current = state();
+        return current.status === "scan" ? current.progress.pairs : [];
+    });
+    const groups = createMemo(() => groupByBlockedAccount(pairs()));
     let abortController: AbortController | undefined;
 
     onCleanup(() => abortController?.abort());
@@ -184,52 +225,27 @@ const Page: Component = () => {
                                     {" "}
                                     followed accounts
                                 </p>
-                                <Show when={progress().pairs.length > 0}>
-                                    <ul class="profile-list block-pair-list">
-                                        <For each={progress().pairs}>
-                                            {(pair) => (
-                                                <li class="block-pair">
-                                                    <For each={getBlockDirections(pair)}>
-                                                        {(direction) => (
-                                                            <p>
-                                                                <img
-                                                                    src={direction.blocker.avatar || avatarFallback}
-                                                                    alt=""
-                                                                    class="avatar-inline"
-                                                                />
-                                                                <a href={`${profilePrefix}${direction.blocker.did}`}>
-                                                                    @{direction.blocker.handle}
-                                                                </a>{" "}
-                                                                blocks{" "}
-                                                                <img
-                                                                    src={direction.blocked.avatar || avatarFallback}
-                                                                    alt=""
-                                                                    class="avatar-inline"
-                                                                />
-                                                                <a href={`${profilePrefix}${direction.blocked.did}`}>
-                                                                    @{direction.blocked.handle}
-                                                                </a>
-                                                            </p>
-                                                        )}
-                                                    </For>
-                                                    <span
-                                                        class={`block-status ${
-                                                            pair.firstBlocksSecond && pair.secondBlocksFirst
-                                                                ? "mutual"
-                                                                : "one-way"
-                                                        }`}
-                                                    >
-                                                        {pair.firstBlocksSecond && pair.secondBlocksFirst
-                                                            ? "Mutual blocks"
-                                                            : result().running
-                                                                    || progress().unchecked.some(({ profile }) =>
-                                                                        profile.did === (pair.firstBlocksSecond
-                                                                            ? pair.second.did
-                                                                            : pair.first.did)
-                                                                    )
-                                                            ? "Direct block"
-                                                            : "One-way block"}
-                                                    </span>
+                                <Show when={groups().length > 0}>
+                                    <ul class="profile-list block-group-list">
+                                        <For each={groups()}>
+                                            {(group) => (
+                                                <li class="block-group">
+                                                    <h2>
+                                                        <ProfileLink profile={group.blocked} /> is blocked by
+                                                    </h2>
+                                                    <ul class="profile-list block-group-members">
+                                                        <For each={group.blockers}>
+                                                            {(blocker) => (
+                                                                <li class="profile-item">
+                                                                    <ProfileLink profile={blocker.profile} />
+                                                                    <Show when={blocker.mutual}>
+                                                                        {" "}
+                                                                        <span class="block-mutual">(mutual)</span>
+                                                                    </Show>
+                                                                </li>
+                                                            )}
+                                                        </For>
+                                                    </ul>
                                                 </li>
                                             )}
                                         </For>

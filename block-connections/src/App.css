@@ -1,22 +1,22 @@
-.block-pair-list {
+.block-group-list {
     margin-top: 24px;
 }
 
-.block-pair {
+.block-group {
     border-top: 1px solid #555;
     padding: 8px 0;
 }
 
-.block-pair p {
+.block-group h2 {
+    font-size: 1.1em;
     margin: 4px 0;
 }
 
-.block-status {
-    display: inline-block;
-    font-size: 0.8em;
-    opacity: 0.7;
+.block-group-members {
+    padding-inline-start: 22px;
 }
 
-.block-status.mutual {
+.block-mutual {
+    font-size: 0.85em;
     color: #ff8a80;
 }
