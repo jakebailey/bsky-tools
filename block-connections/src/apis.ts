@@ -5,8 +5,10 @@ import { mapConcurrent, type ProfileView } from "../../shared/bsky";
 
 const constellationBacklinksUrl = "https://constellation.microcosm.blue/xrpc/blue.microcosm.links.getBacklinks";
 const blockSource = "app.bsky.graph.block:subject";
-const maxBacklinksUrlLength = 6_000;
-const backlinksConcurrency = 8;
+const maxBacklinksUrlLength = 7_800;
+const backlinksConcurrency = 2;
+const backlinksRequestInterval = 100;
+const maxRateLimitRetries = 5;
 
 const BacklinksSchema = v.object({
     records: v.array(v.object({ did: v.custom<Did>(isDid) })),
@@ -26,36 +28,103 @@ export interface ScanProgress {
     pages: number;
 }
 
-function createBacklinksUrl(subject: Did, linkingDids: Did[], cursor?: string): URL {
-    const url = new URL(constellationBacklinksUrl);
-    url.searchParams.set("subject", subject);
-    url.searchParams.set("source", blockSource);
-    url.searchParams.set("limit", "100");
-    for (const did of linkingDids) {
-        url.searchParams.append("did", did);
-    }
-    if (cursor) url.searchParams.set("cursor", cursor);
-    return url;
+function createBacklinksUrl(subject: Did, linkingDids: Did[], cursor?: string): string {
+    const params = new URLSearchParams({
+        subject,
+        source: blockSource,
+        limit: "100",
+    });
+    if (cursor) params.set("cursor", cursor);
+    const didFilters = linkingDids.map(createDidFilter).join("");
+    return `${constellationBacklinksUrl}?${params}${didFilters}`;
+}
+
+function createDidFilter(did: Did): string {
+    return `&did=${encodeURIComponent(did).replaceAll("%3A", ":")}`;
 }
 
 function batchLinkingDids(subject: Did, linkingDids: Did[]): Did[][] {
     const batches: Did[][] = [];
-    const url = createBacklinksUrl(subject, []);
+    const baseUrlLength = createBacklinksUrl(subject, []).length;
+    let urlLength = baseUrlLength;
     let batch: Did[] = [];
 
     for (const did of linkingDids) {
-        url.searchParams.append("did", did);
-        if (url.href.length > maxBacklinksUrlLength && batch.length > 0) {
-            url.searchParams.delete("did");
+        const filterLength = createDidFilter(did).length;
+        if (urlLength + filterLength > maxBacklinksUrlLength && batch.length > 0) {
             batches.push(batch);
             batch = [];
-            url.searchParams.append("did", did);
+            urlLength = baseUrlLength;
         }
         batch.push(did);
+        urlLength += filterLength;
     }
 
     if (batch.length > 0) batches.push(batch);
     return batches;
+}
+
+function wait(milliseconds: number, signal?: AbortSignal): Promise<void> {
+    if (milliseconds <= 0) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            signal?.removeEventListener("abort", abort);
+            resolve();
+        }, milliseconds);
+        const abort = () => {
+            clearTimeout(timeout);
+            reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+        };
+        signal?.addEventListener("abort", abort, { once: true });
+        if (signal?.aborted) abort();
+    });
+}
+
+function getRetryAfterMilliseconds(value: string | null): number | undefined {
+    if (!value) return undefined;
+    const seconds = Number(value);
+    if (Number.isFinite(seconds)) return Math.max(0, seconds * 1_000);
+    const date = Date.parse(value);
+    return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now());
+}
+
+function createBacklinksFetcher(): (url: string, signal?: AbortSignal) => Promise<Response> {
+    let nextRequestAt = 0;
+    let rateLimitedUntil = 0;
+    let requestSlot = Promise.resolve();
+
+    const waitForRequestSlot = async (signal?: AbortSignal) => {
+        while (true) {
+            let requestAt = 0;
+            const reservation = requestSlot.then(() => {
+                requestAt = Math.max(Date.now(), nextRequestAt, rateLimitedUntil);
+                nextRequestAt = requestAt + backlinksRequestInterval;
+            });
+            requestSlot = reservation.then(() => undefined, () => undefined);
+            await reservation;
+            await wait(requestAt - Date.now(), signal);
+            if (Date.now() >= rateLimitedUntil) return;
+        }
+    };
+
+    return async (url, signal) => {
+        let retries = 0;
+        while (true) {
+            await waitForRequestSlot(signal);
+            const response = await fetch(url, { signal });
+            if (response.status !== 429) return response;
+            await response.body?.cancel();
+            if (retries >= maxRateLimitRetries) {
+                throw new Error("Microcosm is rate-limiting scans. Please wait a moment before trying again.");
+            }
+
+            const backoff = Math.min(30_000, 1_000 * 2 ** retries);
+            const retryAfter = getRetryAfterMilliseconds(response.headers.get("Retry-After")) ?? 0;
+            const delay = Math.max(backoff, retryAfter) + Math.random() * 250;
+            rateLimitedUntil = Math.max(rateLimitedUntil, Date.now() + delay);
+            retries++;
+        }
+    };
 }
 
 async function getBlockers(
@@ -63,13 +132,14 @@ async function getBlockers(
     linkingDids: Did[],
     signal: AbortSignal | undefined,
     onPage: () => void,
+    fetchBacklinks: (url: string, signal?: AbortSignal) => Promise<Response>,
 ): Promise<Did[]> {
     const blockers = new Set<Did>();
     const seenCursors = new Set<string>();
     let cursor: string | undefined;
 
     do {
-        const response = await fetch(createBacklinksUrl(subject, linkingDids, cursor), { signal });
+        const response = await fetchBacklinks(createBacklinksUrl(subject, linkingDids, cursor), signal);
         if (!response.ok) {
             throw new Error(`Microcosm request failed: ${response.status} ${response.statusText}`);
         }
@@ -109,6 +179,7 @@ export async function findBlockPairs(
         return batches.map((linkingDids) => ({ subject, linkingDids, batchCount: batches.length }));
     });
     const completedBatches = new Map<Did, number>();
+    const fetchBacklinks = createBacklinksFetcher();
     let checked = 0;
     let pages = 0;
 
@@ -116,7 +187,7 @@ export async function findBlockPairs(
         const blockers = await getBlockers(subject, linkingDids, signal, () => {
             pages++;
             onProgress?.({ checked, total: followedDids.length, pages });
-        });
+        }, fetchBacklinks);
 
         for (const blockerDid of blockers) {
             if (blockerDid === subject || !followedSet.has(blockerDid)) continue;
